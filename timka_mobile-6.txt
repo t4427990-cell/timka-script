@@ -40,8 +40,6 @@ local bootOK, bootError = xpcall(function()
 -- TIMKA_MAIN_BEGIN
 -- ОТ ТИМКИ | MOBILE
 
-local HORSE_IMAGE_ID = "rbxassetid://0"
-
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local Workspace = game:GetService("Workspace")
@@ -56,6 +54,7 @@ if previous then
     if shutdown and shutdown:IsA("BindableEvent") then shutdown:Fire() end
     if previous.Parent then previous:Destroy() end
 end
+
 -- СИСТЕМА СОХРАНЕНИЯ
 local saveFileName = "timka_settings.json"
 local settings = {
@@ -64,7 +63,8 @@ local settings = {
     fovRadius = 150, smoothness = 0.15, customSpeed = 16,
     customJump = 50, customSize = 1, gazeESPEnabled = false,
     nearDistance = 60, preferVisible = true, preferLooking = true,
-    ignoreFriends = true, distanceColors = true, greenFriends = true
+    ignoreFriends = true, distanceColors = true, greenFriends = true,
+    spinEnabled = false, spinSpeed = 50
 }
 if writefile and isfile and readfile then
     if isfile(saveFileName) then
@@ -83,20 +83,21 @@ end
 local active = true
 local connections, highlights, playerConnections = {}, {}, {}
 local camera = Workspace.CurrentCamera
-local espEnabled, aimEnabled, infJumpEnabled = false, false, false
-local aim360, autoReturn = true, false
-local espColor = Color3.fromRGB(255, 65, 95)
-local fovRadius, smoothness = 150, 0.15
-local customSpeed, customJump, customSize = 16, 50, 1
+local espEnabled, aimEnabled, infJumpEnabled = settings.espEnabled, settings.aimEnabled, settings.infJumpEnabled
+local aim360, autoReturn = settings.aim360, settings.autoReturn
+local espColor = Color3.fromRGB(settings.espColor[1], settings.espColor[2], settings.espColor[3])
+local fovRadius, smoothness = settings.fovRadius, settings.smoothness
+local customSpeed, customJump, customSize = settings.customSpeed, settings.customJump, settings.customSize
+local spinEnabled, spinSpeed = settings.spinEnabled, settings.spinSpeed
 local speedChanged, jumpChanged, sizeChanged = false, false, false
 local savedRoot, marker = nil, nil
 local preAimRotation, returning = nil, false
 local lastManualInput, lastJump = 0, 0
 local cameraTouches = {}
-local preferVisible, preferLooking, ignoreFriends = true, true, true
-local distanceColors, greenFriends = true, true
-local gazeESPEnabled = false
-local nearDistance = 60
+local preferVisible, preferLooking, ignoreFriends = settings.preferVisible, settings.preferLooking, settings.ignoreFriends
+local distanceColors, greenFriends = settings.distanceColors, settings.greenFriends
+local gazeESPEnabled = settings.gazeESPEnabled
+local nearDistance = settings.nearDistance
 local farColor = Color3.fromRGB(140, 110, 255)
 local friendColor = Color3.fromRGB(60, 245, 120)
 local friendCache, friendPending, friendFailures = {}, {}, {}
@@ -104,6 +105,7 @@ local friendStatus
 local selectedTarget, nextTargetScan = nil, 0
 local cyan = Color3.fromRGB(63, 215, 255)
 local violet = Color3.fromRGB(149, 104, 255)
+local HORSE_IMAGE_ID = "rbxassetid://0"
 
 local function connect(signal, callback)
     local connection = signal:Connect(callback)
@@ -242,6 +244,7 @@ connect(UIS.InputEnded, function(input)
 end)
 connect(closeButton.Activated, function() menu.Visible = false; dragInput = nil end)
 task.defer(function() if active then fitMenu() end end)
+
 local order = 0
 local function row(height)
     order = order + 1
@@ -294,7 +297,6 @@ local function stepper(text, initial, minimum, maximum, step, decimals, callback
     end
     render()
 end
-
 local sightParams = RaycastParams.new()
 sightParams.FilterType = Enum.RaycastFilterType.Exclude
 sightParams.IgnoreWater = true
@@ -368,6 +370,7 @@ local function updateESPColors()
         end
     end
 end
+
 local function checkFriend(other)
     if other == player or friendPending[other] then return end
     friendPending[other] = true
@@ -425,13 +428,24 @@ for _, other in ipairs(Players:GetPlayers()) do watchPlayer(other) end
 
 local colorTimer = 0
 connect(RunService.Heartbeat, function(dt)
+    local character = player.Character
+    local root = character and character:FindFirstChild("HumanoidRootPart")
+    local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+    
+    -- Логика кручения
+    if spinEnabled and root and humanoid and humanoid.Health > 0 then
+        humanoid.AutoRotate = false
+        root.CFrame = root.CFrame * CFrame.Angles(0, math.rad(spinSpeed * dt), 0)
+    elseif not spinEnabled and humanoid then
+        humanoid.AutoRotate = true
+    end
+
     colorTimer = colorTimer + dt
     if espEnabled and colorTimer >= 0.15 then
         colorTimer = 0
         updateESPColors()
     end
 end)
-
 local function getTarget()
     if not camera then return nil end
     local character = player.Character
@@ -482,6 +496,7 @@ connect(UIS.InputChanged, function(input, processed)
         if returning then returning = false; preAimRotation = nil end
     end
 end)
+
 connect(RunService.RenderStepped, function(dt)
     camera = Workspace.CurrentCamera
     if not camera then return end
@@ -535,7 +550,6 @@ local function applySize()
         if value and value:IsA("NumberValue") then value.Value = customSize end
     end
 end
-
 local pointStatus
 local function status(text) if pointStatus and active then pointStatus.Text = text end end
 local function returnToPoint(character)
@@ -595,32 +609,43 @@ connect(player.CharacterAdded, function(character)
         end
     end)
 end)
+
 row(112)
 label("Проводи по шапке, чтобы двигать меню", 30)
 label("— ТОЧКА ВОЗРОЖДЕНИЯ —")
 button("Сохранить точку здесь", savePoint)
 button("Вернуться к точке", function() local _, message = returnToPoint(player.Character); status(message) end)
 button("Убить себя (Респавн)", resetCharacter)
-toggle("Возврат после смерти", false, function(value)
-    autoReturn = value
+toggle("Возврат после смерти", settings.autoReturn, function(value)
+    autoReturn = value; settings.autoReturn = value; saveSettings()
     if value and not savedRoot then status("Теперь нажми «Сохранить точку здесь»") end
 end)
 button("Удалить точку", function() savedRoot = nil; if marker then marker:Destroy(); marker = nil end; status("Точка не сохранена") end)
 pointStatus = label("Точка не сохранена", 38, Color3.fromRGB(210, 224, 240))
 
 label("— ВИЗУАЛЫ / ESP —")
-toggle("Подсветка игроков", false, function(value)
-    espEnabled = value
+toggle("Подсветка игроков", settings.espEnabled, function(value)
+    espEnabled = value; settings.espEnabled = value
     for _, other in ipairs(Players:GetPlayers()) do
         if other ~= player then
             if value then addESP(other, other.Character) else removeESP(other) end
         end
     end
+    saveSettings()
 end)
-toggle("Режим: Смотрит на меня", false, function(value) gazeESPEnabled = value; updateESPColors() end)
-toggle("Цвет по расстоянию", true, function(value) distanceColors = value; updateESPColors() end)
-toggle("Друзья всегда зелёные", true, function(value) greenFriends = value; updateESPColors() end)
-stepper("Близко (studs)", 60, 10, 300, 10, 0, function(value) nearDistance = value; updateESPColors() end)
+toggle("Режим: Смотрит на меня", settings.gazeESPEnabled, function(value) 
+    gazeESPEnabled = value; settings.gazeESPEnabled = value; updateESPColors(); saveSettings() 
+end)
+toggle("Цвет по расстоянию", settings.distanceColors, function(value) 
+    distanceColors = value; settings.distanceColors = value; updateESPColors(); saveSettings() 
+end)
+toggle("Друзья всегда зелёные", settings.greenFriends, function(value) 
+    greenFriends = value; settings.greenFriends = value; updateESPColors(); saveSettings() 
+end)
+stepper("Близко (studs)", settings.nearDistance, 10, 300, 10, 0, function(value) 
+    nearDistance = value; settings.nearDistance = value; updateESPColors(); saveSettings() 
+end)
+
 label("Близко — выбранный цвет, далеко — фиолетовый", 36, Color3.fromRGB(195, 207, 225))
 local colors = row(40)
 for index, item in ipairs({{"Красный", Color3.fromRGB(255, 65, 95)}, {"Зелёный", Color3.fromRGB(75, 245, 145)}, {"Синий", cyan}}) do
@@ -628,32 +653,105 @@ for index, item in ipairs({{"Красный", Color3.fromRGB(255, 65, 95)}, {"З
     styleButton(object)
     object.TextSize = 11
     object.TextColor3 = item[2]
-    connect(object.Activated, function() espColor = item[2]; updateESPColors() end)
+    connect(object.Activated, function() 
+        espColor = item[2]
+        settings.espColor = {item[2].R * 255, item[2].G * 255, item[2].B * 255}
+        updateESPColors()
+        saveSettings()
+    end)
 end
 
-label("— AIMBOT —")
-toggle("Автонаводка", false, function(value)
-    aimEnabled = value
+label("— КРУЧЕНИЕ —", 30)
+toggle("Быстрое кручение", settings.spinEnabled, function(value)
+    spinEnabled = value; settings.spinEnabled = value; saveSettings()
+    if not value then
+        local char = player.Character
+        local hum = char and char:FindFirstChildOfClass("Humanoid")
+        if hum then hum.AutoRotate = true end
+    end
+end)
+stepper("Скорость кручения", settings.spinSpeed, 10, 360, 10, 0, function(value)
+    spinSpeed = value; settings.spinSpeed = value; saveSettings()
+end)
+
+label("— ДРУЗЬЯ НА СЕРВЕРЕ —", 30)
+local friendListOpen = false
+local friendHolder = row(0)
+friendHolder.Visible = false
+friendHolder.ClipsDescendants = true
+local friendLayout = new("UIListLayout", friendHolder, {Padding = UDim.new(0, 4), SortOrder = Enum.SortOrder.LayoutOrder})
+connect(friendLayout:GetPropertyChangedSignal("AbsoluteContentSize"), function()
+    friendHolder.Size = UDim2.new(1, 0, 0, friendLayout.AbsoluteContentSize.Y)
+end)
+
+local function refreshFriendsUI()
+    for _, child in ipairs(friendHolder:GetChildren()) do
+        if child:IsA("TextButton") then child:Destroy() end
+    end
+    for _, other in ipairs(Players:GetPlayers()) do
+        if other ~= player then
+            local isFriend = friendCache[other] == true
+            local btn = new("TextButton", friendHolder, {Size = UDim2.new(1, 0, 0, 26), Text = other.DisplayName .. (isFriend and " (Друг)" or " (Не друг)")})
+            styleButton(btn)
+            if isFriend then btn.TextColor3 = friendColor end
+            connect(btn.Activated, function() checkFriend(other); task.wait(1); refreshFriendsUI() end)
+        end
+    end
+end
+
+button("Показать/Скрыть список друзей", function()
+    friendListOpen = not friendListOpen
+    friendHolder.Visible = friendListOpen
+    if friendListOpen then refreshFriendsUI() end
+end)
+
+label("— AIMBOT —", 30)
+toggle("Автонаводка", settings.aimEnabled, function(value)
+    aimEnabled = value; settings.aimEnabled = value
     selectedTarget, nextTargetScan = nil, 0
     if value then preAimRotation = nil; returning = false
     else returning = preAimRotation ~= nil end
+    saveSettings()
 end)
-toggle("Аим на 360°", true, function(value) aim360 = value; nextTargetScan = 0 end)
-toggle("Приоритет без стен", true, function(value) preferVisible = value; nextTargetScan = 0 end)
-toggle("Приоритет: смотрит на меня", true, function(value) preferLooking = value; nextTargetScan = 0 end)
-toggle("Не целиться в друзей", true, function(value) ignoreFriends = value; nextTargetScan = 0 end)
+toggle("Аим на 360°", settings.aim360, function(value) 
+    aim360 = value; settings.aim360 = value; nextTargetScan = 0; saveSettings() 
+end)
+toggle("Приоритет без стен", settings.preferVisible, function(value) 
+    preferVisible = value; settings.preferVisible = value; nextTargetScan = 0; saveSettings() 
+end)
+toggle("Приоритет: смотрит на меня", settings.preferLooking, function(value) 
+    preferLooking = value; settings.preferLooking = value; nextTargetScan = 0; saveSettings() 
+end)
+toggle("Не целиться в друзей", settings.ignoreFriends, function(value) 
+    ignoreFriends = value; settings.ignoreFriends = value; nextTargetScan = 0; saveSettings() 
+end)
 label("Без стены > смотрит на тебя > ближе", 32, Color3.fromRGB(195, 207, 225))
 friendStatus = label("Проверка друзей...", 38, Color3.fromRGB(195, 207, 225))
 refreshFriendStatus()
-button("Обновить проверку друзей", function() for _, other in ipairs(Players:GetPlayers()) do checkFriend(other) end; refreshFriendStatus() end)
-stepper("FOV", 150, 20, 600, 10, 0, function(value) fovRadius = value end)
-stepper("Плавность", 0.15, 0, 1, 0.05, 2, function(value) smoothness = value end)
+button("Обновить проверку друзей", function() 
+    for _, other in ipairs(Players:GetPlayers()) do checkFriend(other) end
+    refreshFriendStatus() 
+end)
+stepper("FOV", settings.fovRadius, 20, 600, 10, 0, function(value) 
+    fovRadius = value; settings.fovRadius = value; saveSettings() 
+end)
+stepper("Плавность", settings.smoothness, 0, 1, 0.05, 2, function(value) 
+    smoothness = value; settings.smoothness = value; saveSettings() 
+end)
 
-label("— ПЕРСОНАЖ —")
-toggle("Бесконечный прыжок", false, function(value) infJumpEnabled = value end)
-stepper("Скорость", 16, 16, 200, 5, 0, function(value) customSpeed = value; speedChanged = true; applyStats() end)
-stepper("Сила прыжка", 50, 50, 300, 10, 0, function(value) customJump = value; jumpChanged = true; applyStats() end)
-stepper("Размер R15", 1, 0.5, 3, 0.1, 1, function(value) customSize = value; sizeChanged = true; applySize() end)
+label("— ПЕРСОНАЖ —", 30)
+toggle("Бесконечный прыжок", settings.infJumpEnabled, function(value) 
+    infJumpEnabled = value; settings.infJumpEnabled = value; saveSettings() 
+end)
+stepper("Скорость", settings.customSpeed, 16, 200, 5, 0, function(value) 
+    customSpeed = value; settings.customSpeed = value; speedChanged = true; applyStats(); saveSettings() 
+end)
+stepper("Сила прыжка", settings.customJump, 50, 300, 10, 0, function(value) 
+    customJump = value; settings.customJump = value; jumpChanged = true; applyStats(); saveSettings() 
+end)
+stepper("Размер R15", settings.customSize, 0.5, 3, 0.1, 1, function(value) 
+    customSize = value; settings.customSize = value; sizeChanged = true; applySize(); saveSettings() 
+end)
 
 local splash = new("TextLabel", gui, {
     AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5),
@@ -717,7 +815,9 @@ do
     end
 
     label("— ВЫБОР ИГРОКОВ ДЛЯ АИМА —", 32)
-    toggle("Приоритет выбранных", true, function(value) priorityEnabled = value; selectedTarget, nextTargetScan = nil, 0 end)
+    toggle("Приоритет выбранных", true, function(value) 
+        priorityEnabled = value; selectedTarget, nextTargetScan = nil, 0 
+    end)
     local summary = label("Выбрано: 0", 30)
     local listHolder, refreshRows
     local listButton = button("Показать игроков сервера", function()
@@ -734,7 +834,6 @@ do
     connect(listLayout:GetPropertyChangedSignal("AbsoluteContentSize"), function()
         listHolder.Size = UDim2.new(1, 0, 0, listLayout.AbsoluteContentSize.Y)
     end)
-
     refreshRows = function()
         local sorted = {}
         for other in pairs(priorityRows) do table.insert(sorted, other) end
@@ -752,6 +851,7 @@ do
         summary.Text = string.format("Выбрано: %d · игроков: %d", count, #sorted)
         listButton.Text = listOpen and "Скрыть список игроков" or "Показать игроков сервера"
     end
+
     local function addPriorityPlayer(other)
         if other == player or priorityRows[other] then return end
         local frame = new("Frame", listHolder, {
@@ -769,11 +869,13 @@ do
         })
         styleButton(tpButton)
         priorityRows[other] = object
+        
         connect(object.Activated, function()
             priorityTargets[other.UserId] = not priorityTargets[other.UserId] or nil
             selectedTarget, nextTargetScan = nil, 0
             refreshRows()
         end)
+        
         connect(tpButton.Activated, function()
             if other.Parent ~= Players then status("ТП: игрок уже вышел") return end
             local myCharacter = player.Character
@@ -787,6 +889,7 @@ do
             local targetHumanoid = targetCharacter and targetCharacter:FindFirstChildOfClass("Humanoid")
             if not targetCharacter or not targetCharacter.Parent or not targetRoot or not targetRoot:IsA("BasePart") or not targetRoot:IsDescendantOf(Workspace) then status("ТП: цель не загружена. Подойди ближе и нажми снова") return end
             if not targetHumanoid or targetHumanoid.Health <= 0 then status("ТП: дождись возрождения этого игрока") return end
+            
             local ok, err = pcall(function()
                 local destination = targetRoot.CFrame * CFrame.new(4, 0, 0)
                 local pivotOffset = myRoot.CFrame:ToObjectSpace(myCharacter:GetPivot())
@@ -904,6 +1007,7 @@ do
         noclipEnabled = value
         if not value then restoreCollisions() end
     end)
+
     connect(RunService.Stepped, function()
         if not noclipEnabled then return end
         local character = player.Character
