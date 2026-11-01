@@ -35,12 +35,14 @@ bootClose.Position = UDim2.new(0.95, -42, 0.2, -34)
 bootClose.Text = "X"
 bootClose.Parent = bootGui
 bootClose.Activated:Connect(function() bootGui:Destroy() end)
+
 local bootOK, bootError = xpcall(function()
 -- TIMKA_MAIN_BEGIN
 -- ОТ ТИМКИ | MOBILE
--- Полная замена предыдущего скрипта. LocalScript в собственном плейсе.
--- Точка хранится только до выхода/перезапуска. Возврат выполняется клиентом,
--- а не меняет серверный SpawnLocation. Сервер может отменить перемещение.
+
+-- ===== СЮДА ВСТАВЬ ID СВОЕЙ КАРТИНКИ =====
+local HORSE_IMAGE_ID = "rbxassetid://0" -- ЗАМЕНИ 0 НА СВОЙ ID!
+-- =========================================
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
@@ -50,6 +52,7 @@ local TweenService = game:GetService("TweenService")
 local player = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
 
+-- Безопасное удаление старого меню
 local previous = playerGui:FindFirstChild("CompactMenu")
 if previous then
     local shutdown = previous:FindFirstChild("TimkaShutdown")
@@ -72,6 +75,7 @@ local lastManualInput, lastJump = 0, 0
 local cameraTouches = {}
 local preferVisible, preferLooking, ignoreFriends = true, true, true
 local distanceColors, greenFriends = true, true
+local gazeESPEnabled = false -- Режим "Смотрит на меня"
 local nearDistance = 60
 local farColor = Color3.fromRGB(140, 110, 255)
 local friendColor = Color3.fromRGB(60, 245, 120)
@@ -123,6 +127,7 @@ end
 connect(shutdown.Event, cleanup)
 connect(gui.Destroying, cleanup)
 
+-- КНОПКА ОТКРЫТИЯ
 local openButton = new("TextButton", gui, {
     Size = UDim2.fromOffset(116, 44), Position = UDim2.fromOffset(12, 12),
     BackgroundColor3 = Color3.fromRGB(19, 28, 48), Text = "ОТ ТИМКИ",
@@ -143,11 +148,9 @@ new("UIGradient", menu, {
     Rotation = 65,
 })
 
--- TIMKA_BUTTON_DRAG_BEGIN
--- menu уже объявлено. InputObject хранится отдельно от координат Vector3.
+-- ПЕРЕТАСКИВАНИЕ КНОПКИ
 local buttonInput, buttonStart, buttonPosition
 local buttonMoved = false
-
 local function clampOpenButton()
     local bounds, size = gui.AbsoluteSize, openButton.AbsoluteSize
     openButton.Position = UDim2.fromOffset(
@@ -155,36 +158,23 @@ local function clampOpenButton()
         math.clamp(openButton.Position.Y.Offset, 0, math.max(0, bounds.Y - size.Y))
     )
 end
-
 connect(openButton.InputBegan, function(input)
     if buttonInput then return end
-    if input.UserInputType == Enum.UserInputType.Touch
-        or input.UserInputType == Enum.UserInputType.MouseButton1 then
-        buttonInput = input
-        buttonStart = input.Position
-        buttonPosition = openButton.Position
-        buttonMoved = false
+    if input.UserInputType == Enum.UserInputType.Touch or input.UserInputType == Enum.UserInputType.MouseButton1 then
+        buttonInput, buttonStart, buttonPosition, buttonMoved = input, input.Position, openButton.Position, false
     end
 end)
-
 connect(UIS.InputChanged, function(input)
     if not buttonInput then return end
     local isTouch = buttonInput.UserInputType == Enum.UserInputType.Touch
-    if (isTouch and input ~= buttonInput)
-        or (not isTouch and input.UserInputType ~= Enum.UserInputType.MouseMovement) then
-        return
-    end
+    if (isTouch and input ~= buttonInput) or (not isTouch and input.UserInputType ~= Enum.UserInputType.MouseMovement) then return end
     local delta = input.Position - buttonStart
     if delta.Magnitude > 5 then buttonMoved = true end
     if buttonMoved then
-        openButton.Position = UDim2.fromOffset(
-            buttonPosition.X.Offset + delta.X,
-            buttonPosition.Y.Offset + delta.Y
-        )
+        openButton.Position = UDim2.fromOffset(buttonPosition.X.Offset + delta.X, buttonPosition.Y.Offset + delta.Y)
         clampOpenButton()
     end
 end)
-
 connect(UIS.InputEnded, function(input)
     if input ~= buttonInput then return end
     if (input.Position - buttonStart).Magnitude > 5 then buttonMoved = true end
@@ -193,88 +183,36 @@ connect(UIS.InputEnded, function(input)
     buttonMoved = false
     clampOpenButton()
     if wasMoved then return end
-    local point = input.Position
-    local topLeft, size = openButton.AbsolutePosition, openButton.AbsoluteSize
-    if point.X >= topLeft.X and point.X <= topLeft.X + size.X
-        and point.Y >= topLeft.Y and point.Y <= topLeft.Y + size.Y then
+    local point, topLeft, size = input.Position, openButton.AbsolutePosition, openButton.AbsoluteSize
+    if point.X >= topLeft.X and point.X <= topLeft.X + size.X and point.Y >= topLeft.Y and point.Y <= topLeft.Y + size.Y then
         menu.Visible = not menu.Visible
     end
 end)
 
-connect(UIS.WindowFocusReleased, function()
-    buttonInput, buttonStart, buttonPosition = nil, nil, nil
-    buttonMoved = false
-end)
--- TIMKA_BUTTON_DRAG_END
-
--- Объёмный робот на фоне. Всё создаётся из деталей Roblox, без загрузки картинок.
-local viewport = new("ViewportFrame", menu, {
-    Size = UDim2.new(1, 0, 1, -48), Position = UDim2.fromOffset(0, 48),
-    BackgroundTransparency = 1, BorderSizePixel = 0, Active = false,
-    Ambient = Color3.fromRGB(135, 156, 205), LightColor = cyan,
-    LightDirection = Vector3.new(-1, -1, -2), ImageTransparency = 0.18, ZIndex = 1,
+-- ФОН (КАРТИНКА)
+local bgImage = new("ImageLabel", menu, {
+    Size = UDim2.new(1, 0, 1, 0),
+    BackgroundTransparency = 1,
+    BackgroundColor3 = Color3.fromRGB(15, 20, 35), -- Темный фон, если нет картинки
+    Image = (HORSE_IMAGE_ID ~= "rbxassetid://0" and HORSE_IMAGE_ID or ""),
+    ImageTransparency = 0.25,
+    ScaleType = Enum.ScaleType.Crop,
+    ZIndex = 1,
 })
-local world = new("WorldModel", viewport)
-local robot = new("Model", world, {Name = "TimkaRobot"})
-local function robotPart(name, size, position, color, shape)
-    local part = new("Part", robot, {
-        Name = name, Size = size, CFrame = CFrame.new(position), Anchored = true,
-        CanCollide = false, CanTouch = false, CanQuery = false, Color = color,
-        Material = Enum.Material.SmoothPlastic,
-    })
-    if shape then part.Shape = shape end
-    return part
-end
-local white = Color3.fromRGB(200, 215, 238)
-local dark = Color3.fromRGB(20, 30, 53)
-robotPart("Head", Vector3.new(2.8, 1.9, 1.5), Vector3.new(0, 2.55, 0), white)
-robotPart("Visor", Vector3.new(2.45, 1.1, 0.15), Vector3.new(0, 2.55, -0.81), dark)
-for _, x in ipairs({-0.65, 0.65}) do
-    local eye = robotPart("Eye", Vector3.new(0.38, 0.38, 0.15), Vector3.new(x, 2.65, -0.92), cyan, Enum.PartType.Ball)
-    eye.Material = Enum.Material.Neon
-    robotPart("Pupil", Vector3.new(0.15, 0.15, 0.05), Vector3.new(x, 2.65, -1.01),
-        Color3.new(0, 0, 0), Enum.PartType.Ball)
-end
-robotPart("Smile", Vector3.new(0.75, 0.09, 0.1), Vector3.new(0, 2.24, -0.94), cyan).Material = Enum.Material.Neon
-robotPart("Neck", Vector3.new(0.6, 0.45, 0.6), Vector3.new(0, 1.4, 0), dark)
-robotPart("Body", Vector3.new(2.3, 2.15, 1.35), Vector3.new(0, 0.2, 0), white)
-robotPart("Chest", Vector3.new(1.8, 1.35, 0.12), Vector3.new(0, 0.25, -0.75), dark)
-local corePart = robotPart("Core", Vector3.new(0.7, 0.7, 0.18), Vector3.new(0, 0.35, -0.86), violet, Enum.PartType.Ball)
-corePart.Material = Enum.Material.Neon
-new("PointLight", corePart, {Color = violet, Range = 6, Brightness = 2})
-for _, side in ipairs({-1, 1}) do
-    robotPart("Shoulder", Vector3.new(0.8, 0.8, 0.8), Vector3.new(side * 1.65, 0.9, 0), violet, Enum.PartType.Ball)
-    local arm = robotPart("Arm", Vector3.new(0.65, 1.6, 0.8), Vector3.new(side * 1.8, -0.1, 0), white)
-    arm.CFrame = arm.CFrame * CFrame.Angles(0, 0, side * math.rad(12))
-    robotPart("Hand", Vector3.new(0.75, 0.75, 0.75), Vector3.new(side * 1.98, -0.96, 0), dark, Enum.PartType.Ball)
-    robotPart("Leg", Vector3.new(0.75, 1.4, 0.8), Vector3.new(side * 0.65, -1.55, 0), white)
-    robotPart("Boot", Vector3.new(0.95, 0.5, 1.35), Vector3.new(side * 0.65, -2.35, -0.2), violet)
-end
-robotPart("Antenna", Vector3.new(0.13, 0.55, 0.13), Vector3.new(0, 3.7, 0), violet)
-robotPart("AntennaLight", Vector3.new(0.35, 0.35, 0.35), Vector3.new(0, 4.05, 0), cyan, Enum.PartType.Ball).Material = Enum.Material.Neon
-local robotCamera = new("Camera", viewport, {
-    FieldOfView = 39,
-    CFrame = CFrame.lookAt(Vector3.new(5, 3.2, -12.5), Vector3.new(0, 0.7, 0)),
+new("UIGradient", bgImage, {
+    Transparency = NumberSequence.new({
+        NumberSequenceKeypoint.new(0, 0),
+        NumberSequenceKeypoint.new(0.5, 0.2),
+        NumberSequenceKeypoint.new(1, 0.8)
+    }),
+    Rotation = 90
 })
-viewport.CurrentCamera = robotCamera
 
-local robotTime = 0
-connect(RunService.RenderStepped, function(dt)
-    if not menu.Visible then return end
-    robotTime = robotTime + dt
-    local yOffset = math.sin(robotTime * 2) * 0.2
-    local rotOffset = math.sin(robotTime * 0.5) * math.rad(10)
-    robotCamera.CFrame = CFrame.lookAt(
-        Vector3.new(5 + rotOffset, 3.2 + yOffset, -12.5),
-        Vector3.new(0, 0.7, 0)
-    )
-end)
-
+-- ШАПКА
 local header = new("Frame", menu, {
     Size = UDim2.new(1, 0, 0, 48), BackgroundColor3 = Color3.fromRGB(16, 23, 41),
-    BackgroundTransparency = 0.08, BorderSizePixel = 0, Active = true, ZIndex = 4,
+    BackgroundTransparency = 0.2, BorderSizePixel = 0, Active = true, ZIndex = 4,
 })
--- Отдельная область перетаскивания, чтобы закрытие не двигало окно.
 local dragArea = new("TextLabel", header, {
     Size = UDim2.new(1, -50, 1, 0), BackgroundTransparency = 1,
     Text = "ОТ ТИМКИ  ·  тяни здесь", TextColor3 = cyan,
@@ -305,11 +243,10 @@ connect(layout:GetPropertyChangedSignal("AbsoluteContentSize"), function()
     scroll.CanvasSize = UDim2.fromOffset(0, layout.AbsoluteContentSize.Y + 22)
 end)
 
--- Один палец двигает окно только за шапку. Второй не перехватывает жест.
+-- ДРАГ МЕНЮ
 local dragInput, dragStart, dragPosition
 local function clampMenu()
-    local bounds = gui.AbsoluteSize
-    local size = menu.AbsoluteSize
+    local bounds, size = gui.AbsoluteSize, menu.AbsoluteSize
     menu.Position = UDim2.fromOffset(
         math.clamp(menu.Position.X.Offset, 0, math.max(0, bounds.X - size.X)),
         math.clamp(menu.Position.Y.Offset, 0, math.max(0, bounds.Y - size.Y))
@@ -342,28 +279,21 @@ connect(UIS.InputEnded, function(input)
     if input == dragInput then dragInput = nil end
     cameraTouches[input] = nil
 end)
-connect(UIS.WindowFocusReleased, function()
-    dragInput = nil
-    cameraTouches = {}
-end)
 connect(closeButton.Activated, function() menu.Visible = false; dragInput = nil end)
 task.defer(function() if active then fitMenu() end end)
 
+-- ХЕЛПЕРЫ
 local order = 0
 local function row(height)
     order = order + 1
-    return new("Frame", scroll, {
-        Size = UDim2.new(1, 0, 0, height), LayoutOrder = order,
-        BackgroundTransparency = 1, BorderSizePixel = 0,
-    })
+    return new("Frame", scroll, {Size = UDim2.new(1, 0, 0, height), LayoutOrder = order, BackgroundTransparency = 1, BorderSizePixel = 0})
 end
 local function label(text, height, color)
     local holder = row(height or 26)
     return new("TextLabel", holder, {
-        Size = UDim2.fromScale(1, 1), BackgroundTransparency = 1,
-        Text = text, TextColor3 = color or cyan, TextSize = 13,
-        TextWrapped = true, Font = Enum.Font.GothamBold,
-        TextXAlignment = Enum.TextXAlignment.Left,
+        Size = UDim2.fromScale(1, 1), BackgroundTransparency = 1, Text = text,
+        TextColor3 = color or cyan, TextSize = 13, TextWrapped = true,
+        Font = Enum.Font.GothamBold, TextXAlignment = Enum.TextXAlignment.Left,
     })
 end
 local function styleButton(button)
@@ -400,9 +330,7 @@ local function stepper(text, initial, minimum, maximum, step, decimals, callback
         TextColor3 = Color3.new(1, 1, 1), TextSize = 13, Font = Enum.Font.GothamBold,
         TextXAlignment = Enum.TextXAlignment.Left,
     })
-    local function render()
-        caption.Text = text .. ": " .. string.format("%." .. decimals .. "f", value)
-    end
+    local function render() caption.Text = text .. ": " .. string.format("%." .. decimals .. "f", value) end
     for index, direction in ipairs({-1, 1}) do
         local object = new("TextButton", holder, {
             Size = UDim2.fromOffset(46, 42), Position = UDim2.new(1, -102 + (index - 1) * 52, 0, 1),
@@ -419,7 +347,29 @@ local function stepper(text, initial, minimum, maximum, step, decimals, callback
     render()
 end
 
--- ESP
+-- ЛОГИКА ВЗГЛЯДА И ESP
+local sightParams = RaycastParams.new()
+sightParams.FilterType = Enum.RaycastFilterType.Exclude
+sightParams.IgnoreWater = true
+local gazeThreshold = math.cos(math.rad(25))
+
+-- Функция проверки стен (теперь принимает точку старта)
+local function clearSight(part, character, origin)
+    origin = origin or camera.CFrame.Position
+    local direction = part.Position - origin
+    if direction.Magnitude < 0.001 then return true end
+    local result = Workspace:Raycast(origin, direction, sightParams)
+    return result == nil or result.Instance:IsDescendantOf(character)
+end
+
+local function looksAtMe(character, myPosition)
+    local head = character:FindFirstChild("Head") or character:FindFirstChild("HumanoidRootPart")
+    if not head or not head:IsA("BasePart") then return false end
+    local direction = myPosition - head.Position
+    if direction.Magnitude < 0.001 then return true end
+    return head.CFrame.LookVector:Dot(direction.Unit) >= gazeThreshold
+end
+
 local function refreshFriendStatus()
     if not friendStatus or not active then return end
     local checked, total, failed = 0, 0, 0
@@ -431,51 +381,64 @@ local function refreshFriendStatus()
         end
     end
     friendStatus.Text = string.format("Друзья: проверено %d / %d", checked, total)
-    if failed > 0 then
-        friendStatus.Text = friendStatus.Text .. " · не удалось: " .. failed
-    end
+    if failed > 0 then friendStatus.Text = friendStatus.Text .. " · не удалось: " .. failed end
 end
 
 local function updateESPColors()
     local character = player.Character
     local root = character and character:FindFirstChild("HumanoidRootPart")
+    local myHead = character and (character:FindFirstChild("Head") or root)
+    
     for other, highlight in pairs(highlights) do
         if highlight.Parent then
-            local color = espColor
-            local friend = greenFriends and friendCache[other] == true
-            if friend then
-                color = friendColor
-            elseif distanceColors and root then
-                local targetCharacter = other.Character
-                local targetRoot = targetCharacter and targetCharacter:FindFirstChild("HumanoidRootPart")
-                if targetRoot and (root.Position - targetRoot.Position).Magnitude > nearDistance then
-                    color = farColor
+            -- РЕЖИМ ВЗГЛЯДА (Красный/Синий)
+            if gazeESPEnabled and myHead then
+                local targetChar = other.Character
+                local targetHead = targetChar and (targetChar:FindFirstChild("Head") or targetChar:FindFirstChild("HumanoidRootPart"))
+                
+                if targetHead then
+                    local dir = myHead.Position - targetHead.Position
+                    local dot = dir.Magnitude > 0.001 and targetHead.CFrame.LookVector:Dot(dir.Unit) or 0
+                    -- Проверяем стены от головы к голове
+                    local canSee = clearSight(myHead, targetChar, targetHead.Position)
+                    
+                    if dot >= gazeThreshold and canSee then
+                        highlight.FillColor = Color3.fromRGB(255, 0, 0) -- Красный (смотрит)
+                        highlight.OutlineColor = Color3.fromRGB(255, 0, 0)
+                    else
+                        highlight.FillColor = Color3.fromRGB(0, 150, 255) -- Синий (не смотрит)
+                        highlight.OutlineColor = Color3.fromRGB(0, 150, 255)
+                    end
                 end
+            else
+                -- СТАРАЯ ЛОГИКА (Дистанция/Друзья)
+                local color = espColor
+                local friend = greenFriends and friendCache[other] == true
+                if friend then
+                    color = friendColor
+                elseif distanceColors and root then
+                    local targetCharacter = other.Character
+                    local targetRoot = targetCharacter and targetCharacter:FindFirstChild("HumanoidRootPart")
+                    if targetRoot and (root.Position - targetRoot.Position).Magnitude > nearDistance then
+                        color = farColor
+                    end
+                end
+                highlight.FillColor = color
+                highlight.OutlineColor = friend and friendColor or Color3.new(1, 1, 1)
             end
-            highlight.FillColor = color
-            highlight.OutlineColor = friend and friendColor or Color3.new(1, 1, 1)
         end
     end
 end
 
--- Проверка дружбы выполняется отдельно от отрисовки, максимум три попытки.
 local function checkFriend(other)
     if other == player or friendPending[other] then return end
     friendPending[other] = true
     friendFailures[other] = nil
     task.spawn(function()
         for attempt = 1, 3 do
-            if not active or other.Parent ~= Players then
-                friendPending[other] = nil
-                return
-            end
-            local ok, result = pcall(function()
-                return player:IsFriendsWithAsync(other.UserId)
-            end)
-            if not active or other.Parent ~= Players then
-                friendPending[other] = nil
-                return
-            end
+            if not active or other.Parent ~= Players then friendPending[other] = nil; return end
+            local ok, result = pcall(function() return player:IsFriendsWithAsync(other.UserId) end)
+            if not active or other.Parent ~= Players then friendPending[other] = nil; return end
             if ok and type(result) == "boolean" then
                 friendCache[other] = result
                 friendPending[other] = nil
@@ -522,755 +485,4 @@ connect(Players.PlayerRemoving, function(other)
     playerConnections[other] = nil
     friendCache[other], friendPending[other], friendFailures[other] = nil, nil, nil
     nextTargetScan = 0
-    task.defer(refreshFriendStatus)
-end)
-for _, other in ipairs(Players:GetPlayers()) do watchPlayer(other) end
-
-local colorTimer = 0
-connect(RunService.Heartbeat, function(dt)
-    colorTimer = colorTimer + dt
-    if espEnabled and colorTimer >= 0.15 then
-        colorTimer = 0
-        updateESPColors()
-    end
-end)
-
--- Приоритет: без стены > смотрит на нас > ближе.
--- Приоритеты отключаются по отдельности. FOV применяется без режима 360°.
-local sightParams = RaycastParams.new()
-sightParams.FilterType = Enum.RaycastFilterType.Exclude
-sightParams.IgnoreWater = true
-local gazeThreshold = math.cos(math.rad(25))
-
-local function clearSight(part, character)
-    local origin = camera.CFrame.Position
-    local direction = part.Position - origin
-    if direction.Magnitude < 0.001 then return true end
-    local result = Workspace:Raycast(origin, direction, sightParams)
-    return result == nil or result.Instance:IsDescendantOf(character)
-end
-
-local function looksAtMe(character, myPosition)
-    local head = character:FindFirstChild("Head") or character:FindFirstChild("HumanoidRootPart")
-    if not head or not head:IsA("BasePart") then return false end
-    local direction = myPosition - head.Position
-    if direction.Magnitude < 0.001 then return true end
-    return head.CFrame.LookVector:Dot(direction.Unit) >= gazeThreshold
-end
-
-local function getTarget()
-    if not camera then return nil end
-    local character = player.Character
-    local root = character and character:FindFirstChild("HumanoidRootPart")
-    local ownHumanoid = character and character:FindFirstChildOfClass("Humanoid")
-    if not root or not ownHumanoid or ownHumanoid.Health <= 0 then return nil end
-    local center = camera.ViewportSize * 0.5
-    local myHead = character:FindFirstChild("Head") or root
-    sightParams.FilterDescendantsInstances = {character}
-    local closest, distance = nil, math.huge
-    local bestVisible, bestLooking = -1, -1
-    for _, other in ipairs(Players:GetPlayers()) do
-        local targetCharacter = other ~= player and other.Character
-        -- Пока дружба неизвестна, защищённый режим пропускает этого игрока.
-        if targetCharacter and (not ignoreFriends or friendCache[other] == false) then
-            local humanoid = targetCharacter:FindFirstChildOfClass("Humanoid")
-            local part = targetCharacter:FindFirstChild("Head") or targetCharacter:FindFirstChild("HumanoidRootPart")
-            if humanoid and humanoid.Health > 0 and part and part:IsA("BasePart") then
-                local point, visible = camera:WorldToViewportPoint(part.Position)
-                local inFov = visible and (Vector2.new(point.X, point.Y) - center).Magnitude <= fovRadius
-                if aim360 or inFov then
-                    local current = (root.Position - part.Position).Magnitude
-                    local clear = true
-                    if preferVisible or preferLooking then clear = clearSight(part, targetCharacter) end
-                    local visibleRank = (preferVisible and clear) and 1 or 0
-                    local lookingRank = (preferLooking and clear and looksAtMe(targetCharacter, myHead.Position)) and 1 or 0
-                    if visibleRank > bestVisible
-                        or (visibleRank == bestVisible and lookingRank > bestLooking)
-                        or (visibleRank == bestVisible and lookingRank == bestLooking and current < distance) then
-                        closest, distance = part, current
-                        bestVisible, bestLooking = visibleRank, lookingRank
-                    end
-                end
-            end
-        end
-    end
-    return closest
-end
-connect(UIS.InputBegan, function(input, processed)
-    if not processed and camera and input.UserInputType == Enum.UserInputType.Touch then
-        if input.Position.X > camera.ViewportSize.X * 0.45 then cameraTouches[input] = true end
-    end
-end)
-connect(UIS.InputChanged, function(input, processed)
-    local mouseMoved = input.UserInputType == Enum.UserInputType.MouseMovement and not processed
-    if mouseMoved or cameraTouches[input] then
-        lastManualInput = os.clock()
-        if returning then returning = false; preAimRotation = nil end
-    end
-end)
-connect(RunService.RenderStepped, function(dt)
-    camera = Workspace.CurrentCamera
-    if not camera then return end
-    if returning and preAimRotation then
-        local desired = CFrame.new(camera.CFrame.Position) * preAimRotation
-        camera.CFrame = camera.CFrame:Lerp(desired, 1 - math.exp(-dt / 0.1))
-        if (camera.CFrame.LookVector - desired.LookVector).Magnitude < 0.01 then
-            camera.CFrame = desired; returning = false; preAimRotation = nil
-        end
-        return
-    end
-    if not aimEnabled or os.clock() - lastManualInput < 0.35 then return end
-    -- На телефоне проверяем игроков 10 раз в секунду, камеру двигаем каждый кадр.
-    local now = os.clock()
-    if now >= nextTargetScan then
-        selectedTarget = getTarget()
-        nextTargetScan = now + 0.1
-    end
-    local target = selectedTarget
-    if not target or not target.Parent then return end
-    if (target.Position - camera.CFrame.Position).Magnitude < 0.001 then return end
-    if not preAimRotation then preAimRotation = camera.CFrame.Rotation end
-    local desired = CFrame.lookAt(camera.CFrame.Position, target.Position)
-    camera.CFrame = smoothness <= 0 and desired or camera.CFrame:Lerp(desired, math.clamp(dt / smoothness, 0, 1))
-end)
-
--- Прыжок работает и с экранной кнопкой, и с Space.
-connect(UIS.JumpRequest, function()
-    if not infJumpEnabled or UIS:GetFocusedTextBox() or os.clock() - lastJump < 0.12 then return end
-    local character = player.Character
-    local humanoid = character and character:FindFirstChildOfClass("Humanoid")
-    if humanoid and humanoid.Health > 0 and not humanoid.Sit then
-        lastJump = os.clock()
-        humanoid:ChangeState(Enum.HumanoidStateType.Jumping)
-    end
-end)
-
-local function applyStats()
-    local character = player.Character
-    local humanoid = character and character:FindFirstChildOfClass("Humanoid")
-    if not humanoid then return end
-    if speedChanged then humanoid.WalkSpeed = customSpeed end
-    if jumpChanged then humanoid.UseJumpPower = true; humanoid.JumpPower = customJump end
-end
-local scaleNames = {"BodyHeightScale", "BodyWidthScale", "BodyDepthScale", "HeadScale"}
-local function applySize()
-    if not sizeChanged then return end
-    local character = player.Character
-    local humanoid = character and character:FindFirstChildOfClass("Humanoid")
-    if not humanoid then return end
-    -- Только размер R15: BodyTypeScale/BodyProportionScale не трогаем.
-    for _, name in ipairs(scaleNames) do
-        local value = humanoid:FindFirstChild(name)
-        if value and value:IsA("NumberValue") then value.Value = customSize end
-    end
-end
-
--- Сохранение точки: координаты и поворот HumanoidRootPart.
-local pointStatus
-local function status(text)
-    if pointStatus and active then pointStatus.Text = text end
-end
-local function returnToPoint(character)
-    if not savedRoot then return false, "Сначала сохрани точку" end
-    if not character or character ~= player.Character or not character.Parent then return false, "Персонаж ещё не готов" end
-    local root = character:FindFirstChild("HumanoidRootPart")
-    local humanoid = character:FindFirstChildOfClass("Humanoid")
-    if not root or not humanoid or humanoid.Health <= 0 then return false, "Дождись возрождения" end
-    if humanoid.Sit then return false, "Сначала встань с сиденья" end
-    local ok = pcall(function()
-        local offset = root.CFrame:ToObjectSpace(character:GetPivot())
-        character:PivotTo(savedRoot * offset)
-        root.AssemblyLinearVelocity = Vector3.zero
-        root.AssemblyAngularVelocity = Vector3.zero
-    end)
-    return ok, ok and "Возврат к точке выполнен" or "Не получилось переместиться"
-end
-local function savePoint()
-    local character = player.Character
-    local root = character and character:FindFirstChild("HumanoidRootPart")
-    local humanoid = character and character:FindFirstChildOfClass("Humanoid")
-    if not root or not humanoid or humanoid.Health <= 0 then status("Дождись появления персонажа"); return end
-    savedRoot = root.CFrame
-    if marker then marker:Destroy() end
-    marker = new("Part", Workspace, {
-        Name = "TimkaSavedPoint", Shape = Enum.PartType.Cylinder,
-        Size = Vector3.new(0.08, 3, 3), Anchored = true,
-        CanCollide = false, CanTouch = false, CanQuery = false,
-        Material = Enum.Material.Neon, Color = cyan, Transparency = 0.35,
-        CFrame = CFrame.new(root.Position - Vector3.new(0, humanoid.HipHeight + root.Size.Y * 0.5 - 0.04, 0))
-            * CFrame.Angles(0, 0, math.rad(90)),
-    })
-    local position = savedRoot.Position
-    status(string.format("Сохранено: %.1f / %.1f / %.1f", position.X, position.Y, position.Z))
-end
-
-connect(player.CharacterAdded, function(character)
-    preAimRotation, returning = nil, false
-    selectedTarget, nextTargetScan = nil, 0
-    task.spawn(function()
-        local root = character:WaitForChild("HumanoidRootPart", 10)
-        local humanoid = character:WaitForChild("Humanoid", 10)
-        if not active or not root or not humanoid or character ~= player.Character then return end
-        -- Даём стандартной загрузке персонажа и SpawnLocation завершиться.
-        task.wait(0.8)
-        if not active or character ~= player.Character or not character.Parent then return end
-        applyStats(); applySize()
-        if autoReturn and savedRoot then
-            task.wait(0.2)
-            if not active or not autoReturn or not savedRoot or character ~= player.Character then return end
-            local _, message = returnToPoint(character)
-            status(message)
-        end
-    end)
-end)
-
--- Меню: большие кнопки для пальца, прокрутка внутри окна.
-row(112) -- Открытая область над кнопками: виден робот на фоне.
-label("Проводи по шапке, чтобы двигать меню", 30)
-label("— ТОЧКА ВОЗРОЖДЕНИЯ —")
-button("Сохранить точку здесь", savePoint)
-button("Вернуться к точке", function()
-    local _, message = returnToPoint(player.Character)
-    status(message)
-end)
-toggle("Возврат после смерти", false, function(value)
-    autoReturn = value
-    if value and not savedRoot then status("Теперь нажми «Сохранить точку здесь»") end
-end)
-button("Удалить точку", function()
-    savedRoot = nil
-    if marker then marker:Destroy(); marker = nil end
-    status("Точка не сохранена")
-end)
-pointStatus = label("Точка не сохранена", 38, Color3.fromRGB(210, 224, 240))
-
-label("— ВИЗУАЛЫ / ESP —")
-toggle("Подсветка игроков", false, function(value)
-    espEnabled = value
-    for _, other in ipairs(Players:GetPlayers()) do
-        if other ~= player then
-            if value then addESP(other, other.Character) else removeESP(other) end
-        end
-    end
-end)
-toggle("Цвет по расстоянию", true, function(value)
-    distanceColors = value; updateESPColors()
-end)
-toggle("Друзья всегда зелёные", true, function(value)
-    greenFriends = value; updateESPColors()
-end)
-stepper("Близко (studs)", 60, 10, 300, 10, 0, function(value)
-    nearDistance = value; updateESPColors()
-end)
-label("Близко — выбранный цвет, далеко — фиолетовый", 36, Color3.fromRGB(195, 207, 225))
-label("Цвет близких / обычный цвет:", 26)
-local colors = row(40)
-for index, item in ipairs({
-    {"Красный", Color3.fromRGB(255, 65, 95)},
-    {"Зелёный", Color3.fromRGB(75, 245, 145)},
-    {"Синий", cyan},
-}) do
-    local object = new("TextButton", colors, {
-        Size = UDim2.new(1 / 3, -4, 1, 0), Position = UDim2.new((index - 1) / 3, 0, 0, 0),
-        Text = item[1],
-    })
-    styleButton(object)
-    object.TextSize = 11
-    object.TextColor3 = item[2]
-    connect(object.Activated, function()
-        espColor = item[2]
-        updateESPColors()
-    end)
-end
-
-label("— AIMBOT —")
-toggle("Автонаводка", false, function(value)
-    aimEnabled = value
-    selectedTarget, nextTargetScan = nil, 0
-    if value then preAimRotation = nil; returning = false
-    else returning = preAimRotation ~= nil end
-end)
-toggle("Аим на 360°", true, function(value) aim360 = value; nextTargetScan = 0 end)
-toggle("Приоритет без стен", true, function(value) preferVisible = value; nextTargetScan = 0 end)
-toggle("Приоритет: смотрит на меня", true, function(value) preferLooking = value; nextTargetScan = 0 end)
-toggle("Не целиться в друзей", true, function(value) ignoreFriends = value; nextTargetScan = 0 end)
-label("Без стены > смотрит на тебя > ближе", 32, Color3.fromRGB(195, 207, 225))
-label("Взгляд определяется примерно по голове, не по чужой камере", 38, Color3.fromRGB(195, 207, 225))
-friendStatus = label("Проверка друзей…", 38, Color3.fromRGB(195, 207, 225))
-refreshFriendStatus()
-button("Обновить проверку друзей", function()
-    for _, other in ipairs(Players:GetPlayers()) do checkFriend(other) end
-    refreshFriendStatus()
-end)
-label("При защите друзей непроверенные игроки пропускаются", 38, Color3.fromRGB(195, 207, 225))
-stepper("FOV", 150, 20, 600, 10, 0, function(value) fovRadius = value end)
-label("FOV действует, когда 360° выключен", 28, Color3.fromRGB(195, 207, 225))
-stepper("Плавность", 0.15, 0, 1, 0.05, 2, function(value) smoothness = value end)
-label("Меньше плавность — быстрее наводка", 28, Color3.fromRGB(195, 207, 225))
-
-label("— ПЕРСОНАЖ —")
-toggle("Бесконечный прыжок", false, function(value) infJumpEnabled = value end)
-label("Нажимай обычную кнопку прыжка", 28, Color3.fromRGB(195, 207, 225))
-stepper("Скорость", 16, 16, 200, 5, 0, function(value)
-    customSpeed = value; speedChanged = true; applyStats()
-end)
-stepper("Сила прыжка", 50, 50, 300, 10, 0, function(value)
-    customJump = value; jumpChanged = true; applyStats()
-end)
-stepper("Размер R15", 1, 0.5, 3, 0.1, 1, function(value)
-    customSize = value; sizeChanged = true; applySize()
-end)
-label("Размер меняется у стандартных аватаров R15", 32, Color3.fromRGB(195, 207, 225))
-label("Точка сохраняется только на этот сеанс", 32, Color3.fromRGB(195, 207, 225))
-
--- Заставка.
-local splash = new("TextLabel", gui, {
-    AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5),
-    Size = UDim2.new(0.85, 0, 0, 84), BackgroundColor3 = Color3.fromRGB(12, 19, 34),
-    BackgroundTransparency = 1, Text = "ОТ ТИМКИ", TextColor3 = cyan,
-    TextTransparency = 1, TextSize = 36, Font = Enum.Font.GothamBlack, ZIndex = 20,
-})
-new("UISizeConstraint", splash, {MaxSize = Vector2.new(340, 84)})
-corner(splash, 16)
-local splashStroke = stroke(splash, violet, 1)
-task.spawn(function()
-    task.wait(0.3)
-    if not active then return end
-    TweenService:Create(splash, TweenInfo.new(0.4), {TextTransparency = 0, BackgroundTransparency = 0.05}):Play()
-    TweenService:Create(splashStroke, TweenInfo.new(0.4), {Transparency = 0.1}):Play()
-    task.wait(2.3)
-    if not active then return end
-    TweenService:Create(splash, TweenInfo.new(0.4), {TextTransparency = 1, BackgroundTransparency = 1}):Play()
-    TweenService:Create(splashStroke, TweenInfo.new(0.4), {Transparency = 1}):Play()
-    task.wait(0.4)
-    if active then splash:Destroy() end
-end)
-
-print("ОТ ТИМКИ: мобильное меню загружено")
-
--- ===== ВЫБОР ПРИОРИТЕТНЫХ ИГРОКОВ =====
--- Этот блок должен быть в конце основного скрипта, в том же запуске.
-do
-    local priorityEnabled = true
-    local priorityTargets = {}
-    local priorityRows = {}
-    local listOpen = false
-
-    -- Выбранный игрок получает приоритет только без стены до цели.
-    -- Фильтр друзей, FOV и проверка здоровья сохраняются.
-    local normalGetTarget = getTarget
-    getTarget = function()
-        if not priorityEnabled or not camera then
-            return normalGetTarget()
-        end
-
-        local character = player.Character
-        local root = character and character:FindFirstChild("HumanoidRootPart")
-        local ownHumanoid = character and character:FindFirstChildOfClass("Humanoid")
-        if not root or not ownHumanoid or ownHumanoid.Health <= 0 then
-            return nil
-        end
-
-        local myHead = character:FindFirstChild("Head") or root
-        local center = camera.ViewportSize * 0.5
-        sightParams.FilterDescendantsInstances = {character}
-        local best, bestLooking, bestDistance = nil, -1, math.huge
-
-        for _, other in ipairs(Players:GetPlayers()) do
-            if other ~= player and priorityTargets[other.UserId]
-                and (not ignoreFriends or friendCache[other] == false) then
-
-                local targetCharacter = other.Character
-                local humanoid = targetCharacter and targetCharacter:FindFirstChildOfClass("Humanoid")
-                local part = targetCharacter and (
-                    targetCharacter:FindFirstChild("Head")
-                    or targetCharacter:FindFirstChild("HumanoidRootPart")
-                )
-
-                if humanoid and humanoid.Health > 0 and part and part:IsA("BasePart") then
-                    local point, onScreen = camera:WorldToViewportPoint(part.Position)
-                    local inFov = onScreen and (
-                        Vector2.new(point.X, point.Y) - center
-                    ).Magnitude <= fovRadius
-
-                    if (aim360 or inFov) and clearSight(part, targetCharacter) then
-                        local distance = (root.Position - part.Position).Magnitude
-                        local looking = (
-                            preferLooking and looksAtMe(targetCharacter, myHead.Position)
-                        ) and 1 or 0
-
-                        if looking > bestLooking
-                            or (looking == bestLooking and distance < bestDistance) then
-                            best, bestLooking, bestDistance = part, looking, distance
-                        end
-                    end
-                end
-            end
-        end
-
-        return best or normalGetTarget()
-    end
-
-    -- Новый раздел находится внизу меню.
-    label("— ВЫБОР ИГРОКОВ ДЛЯ АИМА —", 32)
-    toggle("Приоритет выбранных", true, function(value)
-        priorityEnabled = value
-        selectedTarget, nextTargetScan = nil, 0
-    end)
-    label("Выбранные важнее остальных, только если нет стены", 38,
-        Color3.fromRGB(195, 207, 225))
-    label("Фильтр друзей и ограничение FOV сохраняются", 34,
-        Color3.fromRGB(195, 207, 225))
-
-    local summary = label("Выбрано: 0", 30)
-    local listHolder, refreshRows
-    local listButton = button("Показать игроков сервера", function()
-        listOpen = not listOpen
-        listHolder.Visible = listOpen
-        nextTargetScan = 0
-        if refreshRows then refreshRows() end
-    end)
-
-    listHolder = row(0)
-    listHolder.Visible = false
-    listHolder.ClipsDescendants = true
-    local listLayout = new("UIListLayout", listHolder, {
-        Padding = UDim.new(0, 6),
-        SortOrder = Enum.SortOrder.LayoutOrder,
-    })
-    connect(listLayout:GetPropertyChangedSignal("AbsoluteContentSize"), function()
-        listHolder.Size = UDim2.new(1, 0, 0, listLayout.AbsoluteContentSize.Y)
-    end)
-
-    refreshRows = function()
-        local sorted = {}
-        for other in pairs(priorityRows) do table.insert(sorted, other) end
-        table.sort(sorted, function(a, b)
-            return string.lower(a.Name) < string.lower(b.Name)
-        end)
-
-        local count = 0
-        for index, other in ipairs(sorted) do
-            local object = priorityRows[other]
-            local chosen = priorityTargets[other.UserId] == true
-            if chosen then count = count + 1 end
-            object.LayoutOrder = index
-            object.Text = (chosen and "[✓] " or "[ ] ")
-                .. other.DisplayName .. "\n@" .. other.Name
-            object.BackgroundColor3 = chosen
-                and Color3.fromRGB(62, 66, 135)
-                or Color3.fromRGB(21, 35, 56)
-            object.TextColor3 = chosen and cyan or Color3.new(1, 1, 1)
-        end
-
-        summary.Text = string.format("Выбрано: %d · игроков: %d", count, #sorted)
-        listButton.Text = listOpen
-            and "Скрыть список игроков"
-            or "Показать игроков сервера"
-    end
-
-    local function addPriorityPlayer(other)
-        if other == player or priorityRows[other] then return end
-        local object = new("TextButton", listHolder, {
-            Size = UDim2.new(1, 0, 0, 54),
-            Text = "", TextWrapped = true,
-        })
-        styleButton(object)
-        object.TextSize = 12
-        priorityRows[other] = object
-        connect(object.Activated, function()
-            priorityTargets[other.UserId] = not priorityTargets[other.UserId] or nil
-            selectedTarget, nextTargetScan = nil, 0
-            refreshRows()
-        end)
-        refreshRows()
-    end
-
-    connect(Players.PlayerAdded, addPriorityPlayer)
-    connect(Players.PlayerRemoving, function(other)
-        local object = priorityRows[other]
-        if object then object:Destroy(); priorityRows[other] = nil end
-        priorityTargets[other.UserId] = nil
-        selectedTarget, nextTargetScan = nil, 0
-        refreshRows()
-    end)
-
-    for _, other in ipairs(Players:GetPlayers()) do addPriorityPlayer(other) end
-    refreshRows()
-
-    button("Снять выбор со всех", function()
-        priorityTargets = {}
-        selectedTarget, nextTargetScan = nil, 0
-        refreshRows()
-    end)
-    label("Нажми на ник для выбора. Можно выбрать несколько", 38,
-        Color3.fromRGB(195, 207, 225))
-end
-
--- ===== ПОЛЁТ / NOCLIP / ТЕМЫ =====
--- Добавлять в конец основного скрипта, запускать вместе с ним.
-do
-    local flyEnabled, noclipEnabled = false, false
-    local flySpeed = 50
-    local flyRoot, flyHumanoid, attachment, velocity, orientation
-    local originalAutoRotate
-    local failedRoot
-    local held = {}
-    local collisions = {}
-    local moduleClosed = false
-    local flyStatus
-
-    local pad = new("Frame", gui, {
-        Name = "TimkaFlightControls",
-        Size = UDim2.fromOffset(76, 122),
-        Position = UDim2.new(1, -88, 0.5, -61),
-        BackgroundTransparency = 1, Visible = false, ZIndex = 12,
-    })
-    local function verticalButton(text, y, direction)
-        local object = new("TextButton", pad, {
-            Size = UDim2.fromOffset(76, 56), Position = UDim2.fromOffset(0, y),
-            Text = text,
-        })
-        styleButton(object)
-        stroke(object, cyan, 0.2)
-        connect(object.InputBegan, function(input)
-            if input.UserInputType == Enum.UserInputType.Touch
-                or input.UserInputType == Enum.UserInputType.MouseButton1 then
-                held[input] = direction
-            end
-        end)
-    end
-    verticalButton("▲ ВВЕРХ", 0, 1)
-    verticalButton("▼ ВНИЗ", 66, -1)
-    connect(UIS.InputEnded, function(input) held[input] = nil end)
-    connect(UIS.WindowFocusReleased, function() held = {} end)
-
-    local function stopFlight()
-        if velocity then velocity:Destroy(); velocity = nil end
-        if orientation then orientation:Destroy(); orientation = nil end
-        if attachment then attachment:Destroy(); attachment = nil end
-        if flyHumanoid and flyHumanoid.Parent and originalAutoRotate ~= nil then
-            flyHumanoid.AutoRotate = originalAutoRotate
-        end
-        if flyRoot and flyRoot.Parent then
-            flyRoot.AssemblyLinearVelocity = Vector3.zero
-            flyRoot.AssemblyAngularVelocity = Vector3.zero
-        end
-        flyRoot, flyHumanoid, originalAutoRotate = nil, nil, nil
-        held = {}
-        pad.Visible = false
-    end
-
-    local function restoreCollisions()
-        for part, value in pairs(collisions) do
-            if part.Parent then part.CanCollide = value end
-        end
-        collisions = {}
-    end
-
-    local function startFlight(root, humanoid)
-        stopFlight()
-        flyRoot, flyHumanoid = root, humanoid
-        originalAutoRotate = humanoid.AutoRotate
-        humanoid.AutoRotate = false
-        attachment = new("Attachment", root, {Name = "TimkaFlyAttachment"})
-        velocity = new("LinearVelocity", root, {
-            Name = "TimkaFlyVelocity", Attachment0 = attachment,
-            RelativeTo = Enum.ActuatorRelativeTo.World,
-            VelocityConstraintMode = Enum.VelocityConstraintMode.Vector,
-            ForceLimitsEnabled = false, VectorVelocity = Vector3.zero,
-        })
-        orientation = new("AlignOrientation", root, {
-            Name = "TimkaFlyOrientation", Attachment0 = attachment,
-            Mode = Enum.OrientationAlignmentMode.OneAttachment,
-            MaxTorque = 1000000, Responsiveness = 25,
-            CFrame = root.CFrame.Rotation,
-        })
-        root.AssemblyLinearVelocity = Vector3.zero
-        pad.Visible = true
-    end
-
-    label("— ПОЛЁТ / NOCLIP —", 30)
-    toggle("Полёт", false, function(value)
-        flyEnabled = value
-        failedRoot = nil
-        if not value then stopFlight() end
-        flyStatus.Text = value and "Полёт включён" or "Полёт выключен"
-    end)
-    stepper("Скорость полёта", 50, 10, 150, 10, 0, function(value)
-        flySpeed = value
-    end)
-    label("Джойстик — движение, кнопки справа — высота", 38,
-        Color3.fromRGB(195, 207, 225))
-    label("ПК: WASD / стрелки, Space вверх, Ctrl вниз", 38,
-        Color3.fromRGB(195, 207, 225))
-    flyStatus = label("Полёт выключен", 30)
-    toggle("Noclip / сквозь стены", false, function(value)
-        noclipEnabled = value
-        if not value then restoreCollisions() end
-    end)
-    label("Выключай Noclip, когда полностью вышел из стены", 38,
-        Color3.fromRGB(195, 207, 225))
-    label("Noclip отключает и пол: используй вместе с полётом", 38,
-        Color3.fromRGB(195, 207, 225))
-
-    connect(RunService.Stepped, function()
-        if not noclipEnabled then return end
-        local character = player.Character
-        if not character then return end
-        for _, part in ipairs(character:GetDescendants()) do
-            if part:IsA("BasePart") then
-                if collisions[part] == nil then collisions[part] = part.CanCollide end
-                part.CanCollide = false
-            end
-        end
-    end)
-
-    connect(player.CharacterRemoving, function()
-        stopFlight()
-        restoreCollisions()
-        failedRoot = nil
-    end)
-
-    local function key(code)
-        return UIS:IsKeyDown(code) and 1 or 0
-    end
-    connect(RunService.Heartbeat, function()
-        if not flyEnabled then return end
-        local character = player.Character
-        local root = character and character:FindFirstChild("HumanoidRootPart")
-        local humanoid = character and character:FindFirstChildOfClass("Humanoid")
-        if not root or not humanoid or humanoid.Health <= 0 or root.Anchored or humanoid.Sit then
-            if flyRoot then stopFlight() end
-            flyStatus.Text = "Полёт: ожидаю живого персонажа вне сиденья"
-            return
-        end
-        if root == failedRoot then return end
-        if root ~= flyRoot or not velocity or not velocity.Parent
-            or not orientation or not orientation.Parent then
-            local ok = pcall(startFlight, root, humanoid)
-            if not ok then
-                stopFlight()
-                failedRoot = root
-                flyStatus.Text = "Полёт недоступен: выключи и включи снова"
-                return
-            end
-        end
-
-        local currentCamera = Workspace.CurrentCamera
-        if not currentCamera then velocity.VectorVelocity = Vector3.zero; return end
-        local look = currentCamera.CFrame.LookVector
-        local forward = Vector3.new(look.X, 0, look.Z)
-        if forward.Magnitude < 0.001 then
-            look = root.CFrame.LookVector
-            forward = Vector3.new(look.X, 0, look.Z)
-        end
-        forward = forward.Magnitude > 0.001 and forward.Unit or Vector3.new(0, 0, -1)
-        local right = Vector3.new(-forward.Z, 0, forward.X)
-
-        local movement = humanoid.MoveDirection
-        movement = Vector3.new(movement.X, 0, movement.Z)
-        local vertical = 0
-        if not UIS:GetFocusedTextBox() then
-            for _, direction in pairs(held) do vertical = vertical + direction end
-            if UIS.KeyboardEnabled then
-                local x = key(Enum.KeyCode.D) + key(Enum.KeyCode.Right)
-                    - key(Enum.KeyCode.A) - key(Enum.KeyCode.Left)
-                local z = key(Enum.KeyCode.W) + key(Enum.KeyCode.Up)
-                    - key(Enum.KeyCode.S) - key(Enum.KeyCode.Down)
-                if x ~= 0 or z ~= 0 then movement = right * x + forward * z end
-                vertical = vertical + key(Enum.KeyCode.Space)
-                    - math.max(key(Enum.KeyCode.LeftControl), key(Enum.KeyCode.RightControl))
-            end
-        else
-            movement = Vector3.zero
-        end
-        local desired = movement + Vector3.new(0, math.clamp(vertical, -1, 1), 0)
-        if desired.Magnitude > 1 then desired = desired.Unit end
-        velocity.VectorVelocity = desired * flySpeed
-        orientation.CFrame = CFrame.lookAt(Vector3.zero, forward)
-        flyStatus.Text = "Полёт включён · " .. flySpeed
-    end)
-
-    -- Восстанавливаем физику и при перезапуске/удалении меню.
-    -- Соединение принадлежит GUI и отключается при его уничтожении.
-    gui.Destroying:Connect(function()
-        if moduleClosed then return end
-        moduleClosed = true
-        flyEnabled, noclipEnabled = false, false
-        stopFlight()
-        restoreCollisions()
-    end)
-
-    -- ТЕМЫ: меняются акценты интерфейса и цвета робота, ESP сохраняет свои цвета.
-    label("— ТЕМА МЕНЮ —", 30)
-    local themeStatus = label("Тема: голубая", 30)
-    local basePrimary, baseSecondary = cyan, violet
-    local themeObjects = setmetatable({}, {__mode = "k"})
-
-    local function rememberTheme(object)
-        if themeObjects[object] then return end
-        local properties = {}
-        local function remember(property)
-            local value = object[property]
-            if value == cyan or value == basePrimary then properties[property] = "primary"
-            elseif value == violet or value == baseSecondary then properties[property] = "secondary" end
-        end
-        if object:IsA("TextLabel") or object:IsA("TextButton") or object:IsA("TextBox") then
-            if object.Text ~= "Красный" and object.Text ~= "Зелёный" and object.Text ~= "Синий" then
-                remember("TextColor3")
-            end
-        elseif object:IsA("UIStroke") or object:IsA("BasePart") or object:IsA("PointLight") then
-            remember("Color")
-        elseif object:IsA("ScrollingFrame") then
-            remember("ScrollBarImageColor3")
-        elseif object:IsA("ViewportFrame") then
-            remember("LightColor")
-        end
-        if next(properties) then themeObjects[object] = properties end
-    end
-
-    local function applyTheme(name, primary, secondary)
-        for _, object in ipairs(gui:GetDescendants()) do rememberTheme(object) end
-        local oldPrimary, oldSecondary = cyan, violet
-        cyan, violet = primary, secondary
-        for object, properties in pairs(themeObjects) do
-            if object.Parent then
-                for property, role in pairs(properties) do
-                    local previous = role == "primary" and oldPrimary or oldSecondary
-                    local base = role == "primary" and basePrimary or baseSecondary
-                    if object[property] == previous or object[property] == base then
-                        object[property] = role == "primary" and primary or secondary
-                    end
-                end
-            end
-        end
-        themeStatus.Text = "Тема: " .. name
-    end
-
-    button("Голубая тема", function()
-        applyTheme("голубая", Color3.fromRGB(63, 215, 255), Color3.fromRGB(149, 104, 255))
-    end)
-    button("Неоново-зелёная тема", function()
-        applyTheme("неоново-зелёная", Color3.fromRGB(80, 255, 110), Color3.fromRGB(30, 180, 120))
-    end)
-    button("Фиолетовая тема", function()
-        applyTheme("фиолетовая", Color3.fromRGB(195, 130, 255), Color3.fromRGB(255, 100, 190))
-    end)
-end
-
--- TIMKA_BOOT_END
-end, function(message)
-    return tostring(message)
-end)
-if bootOK then
-    if bootGui.Parent then bootGui:Destroy() end
-else
-    warn("ОТ ТИМКИ — ошибка запуска: " .. tostring(bootError))
-    if bootText.Parent then
-        bootText.TextColor3 = Color3.fromRGB(255, 120, 120)
-        bootText.Text = "ОШИБКА ЗАПУСКА\n\n"
-            .. string.sub(tostring(bootError), 1, 1000)
-            .. "\n\nПришли текст или фото этой ошибки."
-    end
-end
+    task.defer(r
