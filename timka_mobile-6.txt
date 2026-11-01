@@ -37,6 +37,11 @@ bootClose.Parent = bootGui
 bootClose.Activated:Connect(function() bootGui:Destroy() end)
 
 local bootOK, bootError = xpcall(function()
+-- TIMKA_MAIN_BEGIN
+-- ОТ ТИМКИ | MOBILE
+
+local HORSE_IMAGE_ID = "rbxassetid://0"
+
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local Workspace = game:GetService("Workspace")
@@ -82,33 +87,29 @@ local function connect(signal, callback)
     table.insert(connections, connection)
     return connection
 end
+
 local function new(class, parent, properties)
     local object = Instance.new(class)
     for key, value in pairs(properties or {}) do object[key] = value end
     object.Parent = parent
     return object
 end
+
 local function corner(object, radius)
     new("UICorner", object, {CornerRadius = UDim.new(0, radius or 10)})
 end
+
 local function stroke(object, color, transparency)
-    return new("UIStroke", object, {
-        Color = color or cyan, Thickness = 1, Transparency = transparency or 0.5,
-    })
+    return new("UIStroke", object, {Color = color or cyan, Thickness = 1, Transparency = transparency or 0.5})
 end
 
-local gui = new("ScreenGui", playerGui, {
-    Name = "CompactMenu", ResetOnSpawn = false, IgnoreGuiInset = false,
-    ZIndexBehavior = Enum.ZIndexBehavior.Sibling, DisplayOrder = 50,
-})
+local gui = new("ScreenGui", playerGui, {Name = "CompactMenu", ResetOnSpawn = false, IgnoreGuiInset = false, ZIndexBehavior = Enum.ZIndexBehavior.Sibling, DisplayOrder = 50})
 local shutdown = new("BindableEvent", gui, {Name = "TimkaShutdown"})
 local function cleanup()
     if not active then return end
     active = false
     for _, connection in ipairs(connections) do connection:Disconnect() end
-    for _, list in pairs(playerConnections) do
-        for _, connection in ipairs(list) do connection:Disconnect() end
-    end
+    for _, list in pairs(playerConnections) do for _, connection in ipairs(list) do connection:Disconnect() end end
     for _, highlight in pairs(highlights) do highlight:Destroy() end
     if marker then marker:Destroy() end
     gui:Destroy()
@@ -116,26 +117,17 @@ end
 connect(shutdown.Event, cleanup)
 connect(gui.Destroying, cleanup)
 
-local openButton = new("TextButton", gui, {
-    Size = UDim2.fromOffset(116, 44), Position = UDim2.fromOffset(12, 12),
-    BackgroundColor3 = Color3.fromRGB(19, 28, 48), Text = "ОТ ТИМКИ",
-    TextColor3 = cyan, TextSize = 15, Font = Enum.Font.GothamBold, ZIndex = 5,
-})
+local openButton = new("TextButton", gui, {Size = UDim2.fromOffset(116, 44), Position = UDim2.fromOffset(12, 12), BackgroundColor3 = Color3.fromRGB(19, 28, 48), Text = "ОТ ТИМКИ", TextColor3 = cyan, TextSize = 15, Font = Enum.Font.GothamBold, ZIndex = 5})
 corner(openButton, 12)
 stroke(openButton)
 
-local menu = new("Frame", gui, {
-    Size = UDim2.fromOffset(310, 510), Position = UDim2.fromOffset(145, 35),
-    BackgroundColor3 = Color3.fromRGB(12, 17, 31), BorderSizePixel = 0,
-    Visible = false, Active = true, ClipsDescendants = true, ZIndex = 3,
-})
+local menu = new("Frame", gui, {Size = UDim2.fromOffset(310, 510), Position = UDim2.fromOffset(145, 35), BackgroundColor3 = Color3.fromRGB(12, 17, 31), BorderSizePixel = 0, Visible = false, Active = true, ClipsDescendants = true, ZIndex = 3})
 corner(menu, 16)
 stroke(menu, cyan, 0.25)
-new("UIGradient", menu, {
-    Color = ColorSequence.new(Color3.fromRGB(29, 42, 67), Color3.fromRGB(12, 15, 29)),
-    Rotation = 65,
-})
+new("UIGradient", menu, {Color = ColorSequence.new(Color3.fromRGB(29, 42, 67), Color3.fromRGB(12, 15, 29)), Rotation = 65})
 
+local bgImage = new("ImageLabel", menu, {Size = UDim2.fromScale(1, 1), Position = UDim2.fromScale(0, 0), BackgroundTransparency = 1, Image = HORSE_IMAGE_ID, ScaleType = Enum.ScaleType.Crop, ZIndex = 0})
+new("Frame", menu, {Size = UDim2.fromScale(1, 1), Position = UDim2.fromScale(0, 0), BackgroundColor3 = Color3.fromRGB(0, 0, 0), BackgroundTransparency = 0.55, BorderSizePixel = 0, ZIndex = 1})
 local buttonInput, buttonStart, buttonPosition
 local buttonMoved = false
 local function clampOpenButton()
@@ -180,39 +172,16 @@ connect(UIS.WindowFocusReleased, function()
     buttonMoved = false
 end)
 
-local header = new("Frame", menu, {
-    Size = UDim2.new(1, 0, 0, 48), BackgroundColor3 = Color3.fromRGB(16, 23, 41),
-    BackgroundTransparency = 0.2, BorderSizePixel = 0, Active = true, ZIndex = 4,
-})
-local dragArea = new("TextLabel", header, {
-    Size = UDim2.new(1, -50, 1, 0), BackgroundTransparency = 1,
-    Text = "ОТ ТИМКИ  ·  тяни здесь", TextColor3 = cyan,
-    TextSize = 14, Font = Enum.Font.GothamBold, Active = true,
-})
-local closeButton = new("TextButton", header, {
-    Size = UDim2.fromOffset(40, 38), Position = UDim2.new(1, -44, 0, 5),
-    BackgroundColor3 = Color3.fromRGB(123, 43, 71), Text = "×",
-    TextColor3 = Color3.new(1, 1, 1), TextSize = 25, Font = Enum.Font.GothamBold,
-})
+local header = new("Frame", menu, {Size = UDim2.new(1, 0, 0, 48), BackgroundColor3 = Color3.fromRGB(16, 23, 41), BackgroundTransparency = 0.2, BorderSizePixel = 0, Active = true, ZIndex = 4})
+local dragArea = new("TextLabel", header, {Size = UDim2.new(1, -50, 1, 0), BackgroundTransparency = 1, Text = "ОТ ТИМКИ  ·  тяни здесь", TextColor3 = cyan, TextSize = 14, Font = Enum.Font.GothamBold, Active = true})
+local closeButton = new("TextButton", header, {Size = UDim2.fromOffset(40, 38), Position = UDim2.new(1, -44, 0, 5), BackgroundColor3 = Color3.fromRGB(123, 43, 71), Text = "×", TextColor3 = Color3.new(1, 1, 1), TextSize = 25, Font = Enum.Font.GothamBold})
 corner(closeButton, 10)
 
-local scroll = new("ScrollingFrame", menu, {
-    Size = UDim2.new(1, -8, 1, -52), Position = UDim2.fromOffset(4, 48),
-    BackgroundTransparency = 1, BorderSizePixel = 0, ScrollBarThickness = 4,
-    ScrollBarImageColor3 = cyan, CanvasSize = UDim2.fromOffset(0, 0),
-    ScrollingDirection = Enum.ScrollingDirection.Y,
-    ElasticBehavior = Enum.ElasticBehavior.Never, Active = true, ZIndex = 3,
-})
-local layout = new("UIListLayout", scroll, {
-    Padding = UDim.new(0, 7), SortOrder = Enum.SortOrder.LayoutOrder,
-})
-new("UIPadding", scroll, {
-    PaddingLeft = UDim.new(0, 8), PaddingRight = UDim.new(0, 10),
-    PaddingTop = UDim.new(0, 10), PaddingBottom = UDim.new(0, 12),
-})
-connect(layout:GetPropertyChangedSignal("AbsoluteContentSize"), function()
-    scroll.CanvasSize = UDim2.fromOffset(0, layout.AbsoluteContentSize.Y + 22)
-end)
+local scroll = new("ScrollingFrame", menu, {Size = UDim2.new(1, -8, 1, -52), Position = UDim2.fromOffset(4, 48), BackgroundTransparency = 1, BorderSizePixel = 0, ScrollBarThickness = 4, ScrollBarImageColor3 = cyan, CanvasSize = UDim2.fromOffset(0, 0), ScrollingDirection = Enum.ScrollingDirection.Y, ElasticBehavior = Enum.ElasticBehavior.Never, Active = true, ZIndex = 3})
+local layout = new("UIListLayout", scroll, {Padding = UDim.new(0, 7), SortOrder = Enum.SortOrder.LayoutOrder})
+new("UIPadding", scroll, {PaddingLeft = UDim.new(0, 8), PaddingRight = UDim.new(0, 10), PaddingTop = UDim.new(0, 10), PaddingBottom = UDim.new(0, 12)})
+connect(layout:GetPropertyChangedSignal("AbsoluteContentSize"), function() scroll.CanvasSize = UDim2.fromOffset(0, layout.AbsoluteContentSize.Y + 22) end)
+
 local dragInput, dragStart, dragPosition
 local function clampMenu()
     local bounds, size = gui.AbsoluteSize, menu.AbsoluteSize
@@ -250,7 +219,6 @@ connect(UIS.InputEnded, function(input)
 end)
 connect(closeButton.Activated, function() menu.Visible = false; dragInput = nil end)
 task.defer(function() if active then fitMenu() end end)
-
 local order = 0
 local function row(height)
     order = order + 1
@@ -258,11 +226,7 @@ local function row(height)
 end
 local function label(text, height, color)
     local holder = row(height or 26)
-    return new("TextLabel", holder, {
-        Size = UDim2.fromScale(1, 1), BackgroundTransparency = 1, Text = text,
-        TextColor3 = color or cyan, TextSize = 13, TextWrapped = true,
-        Font = Enum.Font.GothamBold, TextXAlignment = Enum.TextXAlignment.Left,
-    })
+    return new("TextLabel", holder, {Size = UDim2.fromScale(1, 1), BackgroundTransparency = 1, Text = text, TextColor3 = color or cyan, TextSize = 13, TextWrapped = true, Font = Enum.Font.GothamBold, TextXAlignment = Enum.TextXAlignment.Left})
 end
 local function styleButton(button)
     button.BackgroundColor3 = Color3.fromRGB(21, 35, 56)
@@ -293,17 +257,10 @@ end
 local function stepper(text, initial, minimum, maximum, step, decimals, callback)
     local value = initial
     local holder = row(44)
-    local caption = new("TextLabel", holder, {
-        Size = UDim2.new(1, -106, 1, 0), BackgroundTransparency = 1,
-        TextColor3 = Color3.new(1, 1, 1), TextSize = 13, Font = Enum.Font.GothamBold,
-        TextXAlignment = Enum.TextXAlignment.Left,
-    })
+    local caption = new("TextLabel", holder, {Size = UDim2.new(1, -106, 1, 0), BackgroundTransparency = 1, TextColor3 = Color3.new(1, 1, 1), TextSize = 13, Font = Enum.Font.GothamBold, TextXAlignment = Enum.TextXAlignment.Left})
     local function render() caption.Text = text .. ": " .. string.format("%." .. decimals .. "f", value) end
     for index, direction in ipairs({-1, 1}) do
-        local object = new("TextButton", holder, {
-            Size = UDim2.fromOffset(46, 42), Position = UDim2.new(1, -102 + (index - 1) * 52, 0, 1),
-            Text = direction < 0 and "−" or "+",
-        })
+        local object = new("TextButton", holder, {Size = UDim2.fromOffset(46, 42), Position = UDim2.new(1, -102 + (index - 1) * 52, 0, 1), Text = direction < 0 and "−" or "+"})
         styleButton(object)
         object.TextSize = 23
         connect(object.Activated, function()
@@ -388,7 +345,6 @@ local function updateESPColors()
         end
     end
 end
-
 local function checkFriend(other)
     if other == player or friendPending[other] then return end
     friendPending[other] = true
@@ -420,11 +376,7 @@ end
 local function addESP(other, character)
     removeESP(other)
     if not active or not espEnabled or other == player or not character then return end
-    highlights[other] = new("Highlight", character, {
-        Name = "TimkaESP", Adornee = character, FillColor = espColor,
-        OutlineColor = Color3.new(1, 1, 1), FillTransparency = 0.45,
-        DepthMode = Enum.HighlightDepthMode.AlwaysOnTop,
-    })
+    highlights[other] = new("Highlight", character, {Name = "TimkaESP", Adornee = character, FillColor = espColor, OutlineColor = Color3.new(1, 1, 1), FillTransparency = 0.45, DepthMode = Enum.HighlightDepthMode.AlwaysOnTop})
     updateESPColors()
 end
 local function watchPlayer(other)
@@ -494,6 +446,7 @@ local function getTarget()
     end
     return closest
 end
+
 connect(UIS.InputBegan, function(input, processed)
     if not processed and camera and input.UserInputType == Enum.UserInputType.Touch then
         if input.Position.X > camera.ViewportSize.X * 0.45 then cameraTouches[input] = true end
@@ -619,7 +572,6 @@ connect(player.CharacterAdded, function(character)
         end
     end)
 end)
-
 row(112)
 label("Проводи по шапке, чтобы двигать меню", 30)
 label("— ТОЧКА ВОЗРОЖДЕНИЯ —")
@@ -703,7 +655,6 @@ task.spawn(function()
 end)
 
 print("ОТ ТИМКИ: мобильное меню загружено")
-
 do
     local priorityEnabled = true
     local priorityTargets = {}
@@ -778,7 +729,6 @@ do
         summary.Text = string.format("Выбрано: %d · игроков: %d", count, #sorted)
         listButton.Text = listOpen and "Скрыть список игроков" or "Показать игроков сервера"
     end
-
     local function addPriorityPlayer(other)
         if other == player or priorityRows[other] then return end
         local frame = new("Frame", listHolder, {
@@ -848,7 +798,6 @@ do
     refreshRows()
     button("Снять выбор со всех", function() priorityTargets = {}; selectedTarget, nextTargetScan = nil, 0; refreshRows() end)
 end
-
 do
     local flyEnabled, noclipEnabled = false, false
     local flySpeed = 50
@@ -883,4 +832,176 @@ do
         if velocity then velocity:Destroy(); velocity = nil end
         if orientation then orientation:Destroy(); orientation = nil end
         if attachment then attachment:Destroy(); attachment = nil end
-        if flyHumanoi
+        if flyHumanoid and flyHumanoid.Parent and originalAutoRotate ~= nil then flyHumanoid.AutoRotate = originalAutoRotate end
+        if flyRoot and flyRoot.Parent then
+            flyRoot.AssemblyLinearVelocity = Vector3.zero
+            flyRoot.AssemblyAngularVelocity = Vector3.zero
+        end
+        flyRoot, flyHumanoid, originalAutoRotate = nil, nil, nil
+        held = {}
+        pad.Visible = false
+    end
+
+    local function restoreCollisions()
+        for part, value in pairs(collisions) do
+            if part.Parent then part.CanCollide = value end
+        end
+        collisions = {}
+    end
+
+    local function startFlight(root, humanoid)
+        stopFlight()
+        flyRoot, flyHumanoid = root, humanoid
+        originalAutoRotate = humanoid.AutoRotate
+        humanoid.AutoRotate = false
+        attachment = new("Attachment", root, {Name = "TimkaFlyAttachment"})
+        velocity = new("LinearVelocity", root, {
+            Name = "TimkaFlyVelocity", Attachment0 = attachment, RelativeTo = Enum.ActuatorRelativeTo.World,
+            VelocityConstraintMode = Enum.VelocityConstraintMode.Vector, ForceLimitsEnabled = false, VectorVelocity = Vector3.zero,
+        })
+        orientation = new("AlignOrientation", root, {
+            Name = "TimkaFlyOrientation", Attachment0 = attachment, Mode = Enum.OrientationAlignmentMode.OneAttachment,
+            MaxTorque = 1000000, Responsiveness = 25, CFrame = root.CFrame.Rotation,
+        })
+        root.AssemblyLinearVelocity = Vector3.zero
+        pad.Visible = true
+    end
+
+    label("— ПОЛЁТ / NOCLIP —", 30)
+    toggle("Полёт", false, function(value)
+        flyEnabled = value
+        failedRoot = nil
+        if not value then stopFlight() end
+        flyStatus.Text = value and "Полёт включён" or "Полёт выключен"
+    end)
+    stepper("Скорость полёта", 50, 10, 150, 10, 0, function(value) flySpeed = value end)
+    label("Джойстик — движение, кнопки справа — высота", 38, Color3.fromRGB(195, 207, 225))
+    flyStatus = label("Полёт выключен", 30)
+    toggle("Noclip / сквозь стены", false, function(value)
+        noclipEnabled = value
+        if not value then restoreCollisions() end
+    end)
+    connect(RunService.Stepped, function()
+        if not noclipEnabled then return end
+        local character = player.Character
+        if not character then return end
+        for _, part in ipairs(character:GetDescendants()) do
+            if part:IsA("BasePart") then
+                if collisions[part] == nil then collisions[part] = part.CanCollide end
+                part.CanCollide = false
+            end
+        end
+    end)
+    connect(player.CharacterRemoving, function() stopFlight(); restoreCollisions(); failedRoot = nil end)
+
+    local function key(code) return UIS:IsKeyDown(code) and 1 or 0 end
+    connect(RunService.Heartbeat, function()
+        if not flyEnabled then return end
+        local character = player.Character
+        local root = character and character:FindFirstChild("HumanoidRootPart")
+        local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+        if not root or not humanoid or humanoid.Health <= 0 or root.Anchored or humanoid.Sit then
+            if flyRoot then stopFlight() end
+            flyStatus.Text = "Полёт: ожидаю живого персонажа вне сиденья"
+            return
+        end
+        if root == failedRoot then return end
+        if root ~= flyRoot or not velocity or not velocity.Parent or not orientation or not orientation.Parent then
+            local ok = pcall(startFlight, root, humanoid)
+            if not ok then
+                stopFlight()
+                failedRoot = root
+                flyStatus.Text = "Полёт недоступен: выключи и включи снова"
+                return
+            end
+        end
+        local currentCamera = Workspace.CurrentCamera
+        if not currentCamera then velocity.VectorVelocity = Vector3.zero; return end
+        local look = currentCamera.CFrame.LookVector
+        local forward = Vector3.new(look.X, 0, look.Z)
+        if forward.Magnitude < 0.001 then
+            look = root.CFrame.LookVector
+            forward = Vector3.new(look.X, 0, look.Z)
+        end
+        forward = forward.Magnitude > 0.001 and forward.Unit or Vector3.new(0, 0, -1)
+        local right = Vector3.new(-forward.Z, 0, forward.X)
+        local movement = humanoid.MoveDirection
+        movement = Vector3.new(movement.X, 0, movement.Z)
+        local vertical = 0
+        if not UIS:GetFocusedTextBox() then
+            for _, direction in pairs(held) do vertical = vertical + direction end
+            if UIS.KeyboardEnabled then
+                local x = key(Enum.KeyCode.D) + key(Enum.KeyCode.Right) - key(Enum.KeyCode.A) - key(Enum.KeyCode.Left)
+                local z = key(Enum.KeyCode.W) + key(Enum.KeyCode.Up) - key(Enum.KeyCode.S) - key(Enum.KeyCode.Down)
+                if x ~= 0 or z ~= 0 then movement = right * x + forward * z end
+                vertical = vertical + key(Enum.KeyCode.Space) - math.max(key(Enum.KeyCode.LeftControl), key(Enum.KeyCode.RightControl))
+            end
+        else
+            movement = Vector3.zero
+        end
+        local desired = movement + Vector3.new(0, math.clamp(vertical, -1, 1), 0)
+        if desired.Magnitude > 1 then desired = desired.Unit end
+        velocity.VectorVelocity = desired * flySpeed
+        orientation.CFrame = CFrame.lookAt(Vector3.zero, forward)
+        flyStatus.Text = "Полёт включён · " .. flySpeed
+    end)
+
+    gui.Destroying:Connect(function()
+        if moduleClosed then return end
+        moduleClosed = true
+        flyEnabled, noclipEnabled = false, false
+        stopFlight()
+        restoreCollisions()
+    end)
+
+    label("— ТЕМА МЕНЮ —", 30)
+    local themeStatus = label("Тема: голубая", 30)
+    local basePrimary, baseSecondary = cyan, violet
+    local themeObjects = setmetatable({}, {__mode = "k"})
+    local function rememberTheme(object)
+        if themeObjects[object] then return end
+        local properties = {}
+        local function remember(property)
+            local value = object[property]
+            if value == cyan or value == basePrimary then properties[property] = "primary"
+            elseif value == violet or value == baseSecondary then properties[property] = "secondary" end
+        end
+        if object:IsA("TextLabel") or object:IsA("TextButton") or object:IsA("TextBox") then
+            if object.Text ~= "Красный" and object.Text ~= "Зелёный" and object.Text ~= "Синий" then remember("TextColor3") end
+        elseif object:IsA("UIStroke") or object:IsA("BasePart") or object:IsA("PointLight") then remember("Color")
+        elseif object:IsA("ScrollingFrame") then remember("ScrollBarImageColor3")
+        elseif object:IsA("ViewportFrame") then remember("LightColor") end
+        if next(properties) then themeObjects[object] = properties end
+    end
+    local function applyTheme(name, primary, secondary)
+        for _, object in ipairs(gui:GetDescendants()) do rememberTheme(object) end
+        local oldPrimary, oldSecondary = cyan, violet
+        cyan, violet = primary, secondary
+        for object, properties in pairs(themeObjects) do
+            if object.Parent then
+                for property, role in pairs(properties) do
+                    local previous = role == "primary" and oldPrimary or oldSecondary
+                    local base = role == "primary" and basePrimary or baseSecondary
+                    if object[property] == previous or object[property] == base then
+                        object[property] = role == "primary" and primary or secondary
+                    end
+                end
+            end
+        end
+        themeStatus.Text = "Тема: " .. name
+    end
+    button("Голубая тема", function() applyTheme("голубая", Color3.fromRGB(63, 215, 255), Color3.fromRGB(149, 104, 255)) end)
+    button("Неоново-зелёная тема", function() applyTheme("неоново-зелёная", Color3.fromRGB(80, 255, 110), Color3.fromRGB(30, 180, 120)) end)
+    button("Фиолетовая тема", function() applyTheme("фиолетовая", Color3.fromRGB(195, 130, 255), Color3.fromRGB(255, 100, 190)) end)
+end
+
+end, function(message) return tostring(message) end)
+if bootOK then
+    if bootGui.Parent then bootGui:Destroy() end
+else
+    warn("ОТ ТИМКИ — ошибка запуска: " .. tostring(bootError))
+    if bootText.Parent then
+        bootText.TextColor3 = Color3.fromRGB(255, 120, 120)
+        bootText.Text = "ОШИБКА ЗАПУСКА\n\n" .. string.sub(tostring(bootError), 1, 1000) .. "\n\nПришли текст или фото этой ошибки."
+    end
+end
