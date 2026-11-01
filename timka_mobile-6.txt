@@ -1131,7 +1131,7 @@ connect(Players.PlayerAdded, hookPlayerUI)
 connect(Players.PlayerRemoving, function(other)
     removePlayerUI(other)
 end)
-LocalPlayer.CharacterAdded:Connect(function()
+player.CharacterAdded:Connect(function()
     task.wait(1)
     for _, other in ipairs(Players:GetPlayers()) do
         if other ~= player and other.Character then
