@@ -868,3 +868,21 @@ do
                 local pivotOffset = myRoot.CFrame:ToObjectSpace(myCharacter:GetPivot())
                 myCharacter:PivotTo(destination * pivotOffset)
         
+        themeStatus.Text = "Тема: " .. name
+    end
+    button("Голубая тема", function() applyTheme("голубая", Color3.fromRGB(63, 215, 255), Color3.fromRGB(149, 104, 255)) end)
+    button("Неоново-зелёная тема", function() applyTheme("неоново-зелёная", Color3.fromRGB(80, 255, 110), Color3.fromRGB(30, 180, 120)) end)
+    button("Фиолетовая тема", function() applyTheme("фиолетовая", Color3.fromRGB(195, 130, 255), Color3.fromRGB(255, 100, 190)) end)
+end
+
+-- TIMKA_BOOT_END
+end, function(message) return tostring(message) end)
+if bootOK then
+    if bootGui.Parent then bootGui:Destroy() end
+else
+    warn("ОТ ТИМКИ — ошибка запуска: " .. tostring(bootError))
+    if bootText.Parent then
+        bootText.TextColor3 = Color3.fromRGB(255, 120, 120)
+        bootText.Text = "ОШИБКА ЗАПУСКА\n\n" .. string.sub(tostring(bootError), 1, 1000) .. "\n\nПришли текст или фото этой ошибки."
+    end
+end
