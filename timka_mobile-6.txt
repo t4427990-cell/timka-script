@@ -47,7 +47,7 @@ if previous then
     if previous.Parent then previous:Destroy() end
 end
 
-local saveFileName = "timka_settings_v4.json"
+local saveFileName = "timka_settings_v5.json"
 local settings = {
     espEnabled = false, aimEnabled = false, infJumpEnabled = false,
     aim360 = true, autoReturn = false, espColor = {255, 65, 95},
@@ -97,6 +97,7 @@ local selectedTarget, nextTargetScan = nil, 0
 local cyan = Color3.fromRGB(63, 215, 255)
 local violet = Color3.fromRGB(149, 104, 255)
 local HORSE_IMAGE_ID = "rbxassetid://0"
+
 local function connect(signal, callback)
     local connection = signal:Connect(callback)
     table.insert(connections, connection)
@@ -114,7 +115,6 @@ end
 local function stroke(object, color, transparency)
     return new("UIStroke", object, {Color = color or cyan, Thickness = 1, Transparency = transparency or 0.5})
 end
-
 local gui = new("ScreenGui", playerGui, {Name = "CompactMenu", ResetOnSpawn = false, IgnoreGuiInset = false, ZIndexBehavior = Enum.ZIndexBehavior.Sibling, DisplayOrder = 50})
 local shutdown = new("BindableEvent", gui, {Name = "TimkaShutdown"})
 local function cleanup()
@@ -955,86 +955,6 @@ button("Обновить белый список", function() refreshWhiteUI() e
 connect(Players.PlayerAdded, function() task.wait(1); refreshWhiteUI() end)
 connect(Players.PlayerRemoving, function(other) whiteList[other.UserId] = nil; task.wait(0.5); refreshWhiteUI() end)
 task.spawn(function() task.wait(1); refreshWhiteUI() end)
--- ===== ИНТЕРАКТИВНЫЙ ИНТЕРФЕЙС НА ИГРОКАХ =====
-local playerUIs = {}
-local playerUIColors = {}
-
-local function removePlayerUI(other)
-    if playerUIs[other] then
-        playerUIs[other]:Destroy()
-        playerUIs[other] = nil
-    end
-    playerUIColors[other] = nil
-end
-
-local function createPlayerUI(other, character)
-    if other == player or not character then return end
-    removePlayerUI(other)
-
-    local head = character:FindFirstChild("Head") or character:FindFirstChild("HumanoidRootPart")
-    if not head then return end
-
-    local bg = new("BillboardGui", gui, {
-        Name = "PlayerUI_" .. other.UserId,
-        Adornee = head,
-        Size = UDim2.fromOffset(200, 200),
-        StudsOffset = Vector3.new(0, 2.5, 0),
-        AlwaysOnTop = true,
-        LightInfluence = 0,
-        MaxDistance = 1000
-    })
-    playerUIs[other] = bg
-
-    local hitbox = new("TextButton", bg, {
-        Size = UDim2.fromOffset(80, 80),
-        Position = UDim2.fromScale(0.5, 0.5),
-        AnchorPoint = Vector2.new(0.5, 0.5),
-        BackgroundTransparency = 1,
-        Text = "",
-        ZIndex = 1
-    })
-
-    local plusVisual = new("TextButton", hitbox, {
-        Size = UDim2.fromOffset(34, 34),
-        Position = UDim2.fromScale(0.5, 0.5),
-        AnchorPoint = Vector2.new(0.5, 0.5),
-        BackgroundColor3 = Color3.fromRGB(255, 65, 95),
-        Text = "+",
-        TextColor3 = Color3.new(1, 1, 1),
-        TextSize = 24,
-        Font = Enum.Font.GothamBold,
-        ZIndex = 2
-    })
-    corner(plusVisual, 17)
-    stroke(plusVisual, Color3.new(1, 1, 1), 0.2)
-    playerUIColors[other] = plusVisual
-
-    local miniMenu = new("Frame", bg, {
-        Size = UDim2.fromOffset(130, 140),
-        Position = UDim2.new(0.5, 25, 0.5, -70),
-        BackgroundColor3 = Color3.fromRGB(15, 20, 35),
-        BorderSizePixel = 0,
-        Visible = false,
-        ZIndex = 3
-    })
-    corner(miniMenu, 8)
-    stroke(miniMenu, cyan, 0.2)
-
-    new("TextLabel", miniMenu, {
-        Size = UDim2.new(1, -25, 0, 20),
-        Position = UDim2.new(0, 5, 0, 5),
-        BackgroundTransparency = 1,
-        Text = other.DisplayName,
-        TextColor3 = Color3.new(1, 1, 1),
-        TextSize = 11,
-        Font = Enum.Font.GothamBold,
-        TextXAlignment = Enum.TextXAlignment.Left,
-        TextTruncate = Enum.TextTruncate.AtEnd,
-        ZIndex = 4
-    })
-
-    local closeBtn = new("TextButton", miniMenu, {
-
 -- ===== СИСТЕМА НАЖАТИЯ НА ИГРОКОВ (ClickDetector) =====
 local clickMenu = new("Frame", gui, {
     Size = UDim2.fromOffset(160, 160),
@@ -1078,6 +998,7 @@ local function openMenuForPlayer(plr)
     currentClickedPlayer = plr
     targetNameLabel.Text = plr.DisplayName
     clickMenu.Visible = true
+    clickMenu.Position = UDim2.new(0.5, -80, 0.5, -80) -- Центрируем при открытии
 end
 
 connect(closeClickMenu.Activated, function()
@@ -1118,7 +1039,7 @@ connect(tpClickBtn.Activated, function()
     clickMenu.Visible = false
 end)
 
--- Добавляем ClickDetector на игроков
+-- Вешаем ClickDetector на игроков
 local function addClickDetector(plr, char)
     if plr == player or not char then return end
     local partsToClick = {"HumanoidRootPart", "Head", "UpperTorso"}
@@ -1206,80 +1127,82 @@ do
         root.AssemblyLinearVelocity = Vector3.zero
         pad.Visible = true
     end
-label("— ПОЛЁТ / NOCLIP —", 30)
-toggle("Полёт", false, function(value)
-    flyEnabled = value; failedRoot = nil
-    if not value then stopFlight() end
-    flyStatus.Text = value and "Полёт включён" or "Полёт выключен"
-end)
-stepper("Скорость полёта", 50, 10, 150, 10, 0, function(value) flySpeed = value end)
-flyStatus = label("Полёт выключен", 30)
-toggle("Noclip / сквозь стены", false, function(value)
-    noclipEnabled = value
-    if not value then restoreCollisions() end
-end)
 
-connect(RunService.Stepped, function()
-    if not noclipEnabled then return end
-    local character = player.Character
-    if not character then return end
-    for _, part in ipairs(character:GetDescendants()) do
-        if part:IsA("BasePart") then
-            if collisions[part] == nil then collisions[part] = part.CanCollide end
-            part.CanCollide = false
+    label("— ПОЛЁТ / NOCLIP —", 30)
+    toggle("Полёт", false, function(value)
+        flyEnabled = value; failedRoot = nil
+        if not value then stopFlight() end
+        flyStatus.Text = value and "Полёт включён" or "Полёт выключен"
+    end)
+    stepper("Скорость полёта", 50, 10, 150, 10, 0, function(value) flySpeed = value end)
+    flyStatus = label("Полёт выключен", 30)
+    toggle("Noclip / сквозь стены", false, function(value)
+        noclipEnabled = value
+        if not value then restoreCollisions() end
+    end)
+
+    connect(RunService.Stepped, function()
+        if not noclipEnabled then return end
+        local character = player.Character
+        if not character then return end
+        for _, part in ipairs(character:GetDescendants()) do
+            if part:IsA("BasePart") then
+                if collisions[part] == nil then collisions[part] = part.CanCollide end
+                part.CanCollide = false
+            end
         end
-    end
-end)
-connect(player.CharacterRemoving, function() stopFlight(); restoreCollisions(); failedRoot = nil end)
+    end)
+    connect(player.CharacterRemoving, function() stopFlight(); restoreCollisions(); failedRoot = nil end)
 
-local function key(code) return UIS:IsKeyDown(code) and 1 or 0 end
-connect(RunService.Heartbeat, function()
-    if not flyEnabled then return end
-    local character = player.Character
-    local root = character and character:FindFirstChild("HumanoidRootPart")
-    local humanoid = character and character:FindFirstChildOfClass("Humanoid")
-    if not root or not humanoid or humanoid.Health <= 0 or root.Anchored or humanoid.Sit then
-        if flyRoot then stopFlight() end
-        flyStatus.Text = "Полёт: ожидаю живого персонажа"
-        return
-    end
-    if root == failedRoot then return end
-    if root ~= flyRoot or not velocity or not velocity.Parent or not orientation or not orientation.Parent then
-        local ok = pcall(startFlight, root, humanoid)
-        if not ok then stopFlight(); failedRoot = root; flyStatus.Text = "Полёт недоступен"; return end
-    end
-    local currentCamera = Workspace.CurrentCamera
-    if not currentCamera then velocity.VectorVelocity = Vector3.zero; return end
-    local look = currentCamera.CFrame.LookVector
-    local forward = Vector3.new(look.X, 0, look.Z)
-    if forward.Magnitude < 0.001 then forward = Vector3.new(root.CFrame.LookVector.X, 0, root.CFrame.LookVector.Z) end
-    forward = forward.Magnitude > 0.001 and forward.Unit or Vector3.new(0, 0, -1)
-    local right = Vector3.new(-forward.Z, 0, forward.X)
-    local movement = humanoid.MoveDirection
-    movement = Vector3.new(movement.X, 0, movement.Z)
-    local vertical = 0
-    if not UIS:GetFocusedTextBox() then
-        for _, direction in pairs(held) do vertical = vertical + direction end
-        if UIS.KeyboardEnabled then
-            local x = key(Enum.KeyCode.D) + key(Enum.KeyCode.Right) - key(Enum.KeyCode.A) - key(Enum.KeyCode.Left)
-            local z = key(Enum.KeyCode.W) + key(Enum.KeyCode.Up) - key(Enum.KeyCode.S) - key(Enum.KeyCode.Down)
-            if x ~= 0 or z ~= 0 then movement = right * x + forward * z end
-            vertical = vertical + key(Enum.KeyCode.Space) - math.max(key(Enum.KeyCode.LeftControl), key(Enum.KeyCode.RightControl))
+    local function key(code) return UIS:IsKeyDown(code) and 1 or 0 end
+    connect(RunService.Heartbeat, function()
+        if not flyEnabled then return end
+        local character = player.Character
+        local root = character and character:FindFirstChild("HumanoidRootPart")
+        local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+        if not root or not humanoid or humanoid.Health <= 0 or root.Anchored or humanoid.Sit then
+            if flyRoot then stopFlight() end
+            flyStatus.Text = "Полёт: ожидаю живого персонажа"
+            return
         end
-    else movement = Vector3.zero end
-    local desired = movement + Vector3.new(0, math.clamp(vertical, -1, 1), 0)
-    if desired.Magnitude > 1 then desired = desired.Unit end
-    velocity.VectorVelocity = desired * flySpeed
-    orientation.CFrame = CFrame.lookAt(Vector3.zero, forward)
-    flyStatus.Text = "Полёт включён · " .. flySpeed
-end)
+        if root == failedRoot then return end
+        if root ~= flyRoot or not velocity or not velocity.Parent or not orientation or not orientation.Parent then
+            local ok = pcall(startFlight, root, humanoid)
+            if not ok then stopFlight(); failedRoot = root; flyStatus.Text = "Полёт недоступен"; return end
+        end
+        local currentCamera = Workspace.CurrentCamera
+        if not currentCamera then velocity.VectorVelocity = Vector3.zero; return end
+        local look = currentCamera.CFrame.LookVector
+        local forward = Vector3.new(look.X, 0, look.Z)
+        if forward.Magnitude < 0.001 then forward = Vector3.new(root.CFrame.LookVector.X, 0, root.CFrame.LookVector.Z) end
+        forward = forward.Magnitude > 0.001 and forward.Unit or Vector3.new(0, 0, -1)
+        local right = Vector3.new(-forward.Z, 0, forward.X)
+        local movement = humanoid.MoveDirection
+        movement = Vector3.new(movement.X, 0, movement.Z)
+        local vertical = 0
+        if not UIS:GetFocusedTextBox() then
+            for _, direction in pairs(held) do vertical = vertical + direction end
+            if UIS.KeyboardEnabled then
+                local x = key(Enum.KeyCode.D) + key(Enum.KeyCode.Right) - key(Enum.KeyCode.A) - key(Enum.KeyCode.Left)
+                local z = key(Enum.KeyCode.W) + key(Enum.KeyCode.Up) - key(Enum.KeyCode.S) - key(Enum.KeyCode.Down)
+                if x ~= 0 or z ~= 0 then movement = right * x + forward * z end
+                vertical = vertical + key(Enum.KeyCode.Space) - math.max(key(Enum.KeyCode.LeftControl), key(Enum.KeyCode.RightControl))
+            end
+        else movement = Vector3.zero end
+        local desired = movement + Vector3.new(0, math.clamp(vertical, -1, 1), 0)
+        if desired.Magnitude > 1 then desired = desired.Unit end
+        velocity.VectorVelocity = desired * flySpeed
+        orientation.CFrame = CFrame.lookAt(Vector3.zero, forward)
+        flyStatus.Text = "Полёт включён · " .. flySpeed
+    end)
 
-gui.Destroying:Connect(function()
-    if moduleClosed then return end
-    moduleClosed = true
-    flyEnabled, noclipEnabled = false, false
-    stopFlight(); restoreCollisions()
-end)
+    gui.Destroying:Connect(function()
+        if moduleClosed then return end
+        moduleClosed = true
+        flyEnabled, noclipEnabled = false, false
+        stopFlight(); restoreCollisions()
+    end)
+
     label("— ТЕМА МЕНЮ —", 30)
     local themeStatus = label("Тема: голубая", 30)
     local basePrimary, baseSecondary = cyan, violet
