@@ -1028,57 +1028,31 @@ local function createPlayerUI(other, character)
         Position = UDim2.new(1, -22, 0, 0),
         BackgroundColor3 = Color3.fromRGB(200, 40, 40),
         Text = "X",
-        TextColor3 = Color3.new(1, 1, 1),
-        TextSize = 12,
-        Font = Enum.Font.GothamBold,
-        ZIndex = 4
-    })
-    corner(closeBtn, 4)
+ -- Хитбокс (невидимая большая кнопка)
+local hitbox = new("TextButton", bg, {
+    Size = UDim2.fromOffset(80, 80),
+    Position = UDim2.fromScale(0.5, 0.5),
+    AnchorPoint = Vector2.new(0.5, 0.5),
+    BackgroundTransparency = 1,
+    Text = "",
+    ZIndex = 1
+})
 
-    -- Кнопка Флинг
-    local flingBtn = new("TextButton", miniMenu, {
-        Size = UDim2.new(1, -10, 0, 30),
-        Position = UDim2.new(0, 5, 0, 32),
-        BackgroundColor3 = Color3.fromRGB(40, 50, 70),
-        Text = "Флинг",
-        TextColor3 = Color3.new(1, 1, 1),
-        TextSize = 12,
-        Font = Enum.Font.GothamBold,
-        ZIndex = 4
-    })
-    corner(flingBtn, 4)
-
-    -- Кнопка Белый список
-    local whiteBtn = new("TextButton", miniMenu, {
-        Size = UDim2.new(1, -10, 0, 30),
-        Position = UDim2.new(0, 5, 0, 66),
-        BackgroundColor3 = whiteList[other.UserId] and Color3.fromRGB(200, 40, 40) or Color3.fromRGB(40, 50, 70),
-        Text = "В Бел.Сп.",
-        TextColor3 = Color3.new(1, 1, 1),
-        TextSize = 12,
-        Font = Enum.Font.GothamBold,
-        ZIndex = 4
-    })
-    corner(whiteBtn, 4)
-
-    -- Кнопка ТП
-    local tpBtn = new("TextButton", miniMenu, {
-        Size = UDim2.new(1, -10, 0, 30),
-        Position = UDim2.new(0, 5, 0, 100),
-        BackgroundColor3 = Color3.fromRGB(40, 50, 70),
-        Text = "ТП к игроку",
-        TextColor3 = Color3.new(1, 1, 1),
-        TextSize = 12,
-        Font = Enum.Font.GothamBold,
-        ZIndex = 4
-    })
-    corner(tpBtn, 4)
-
-    -- Логика кнопок
-    local isOpen = false
-    connect(plusBtn.Activated, function()
-        isOpen = not isOpen
-        miniMenu.Visible = isOpen
+-- Визуальный "+" (маленький кружок)
+local plusVisual = new("TextButton", hitbox, {
+    Size = UDim2.fromOffset(34, 34),
+    Position = UDim2.fromScale(0.5, 0.5),
+    AnchorPoint = Vector2.new(0.5, 0.5),
+    BackgroundColor3 = Color3.fromRGB(255, 65, 95),
+    Text = "+",
+    TextColor3 = Color3.new(1, 1, 1),
+    TextSize = 24,
+    Font = Enum.Font.GothamBold,
+    ZIndex = 2
+})
+corner(plusVisual, 17)
+stroke(plusVisual, Color3.new(1, 1, 1), 0.2)
+playerUIColors[other] = plusVisual
         plusBtn.Text = isOpen and "-" or "+"
     end)
 
