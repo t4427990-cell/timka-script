@@ -56,6 +56,29 @@ if previous then
     if shutdown and shutdown:IsA("BindableEvent") then shutdown:Fire() end
     if previous.Parent then previous:Destroy() end
 end
+-- СИСТЕМА СОХРАНЕНИЯ
+local saveFileName = "timka_settings.json"
+local settings = {
+    espEnabled = false, aimEnabled = false, infJumpEnabled = false,
+    aim360 = true, autoReturn = false, espColor = {255, 65, 95},
+    fovRadius = 150, smoothness = 0.15, customSpeed = 16,
+    customJump = 50, customSize = 1, gazeESPEnabled = false,
+    nearDistance = 60, preferVisible = true, preferLooking = true,
+    ignoreFriends = true, distanceColors = true, greenFriends = true
+}
+if writefile and isfile and readfile then
+    if isfile(saveFileName) then
+        local success, data = pcall(function() return game:GetService("HttpService"):JSONDecode(readfile(saveFileName)) end)
+        if success and type(data) == "table" then
+            for k, v in pairs(data) do settings[k] = v end
+        end
+    end
+end
+local function saveSettings()
+    if writefile then
+        pcall(function() writefile(saveFileName, game:GetService("HttpService"):JSONEncode(settings)) end)
+    end
+end
 
 local active = true
 local connections, highlights, playerConnections = {}, {}, {}
