@@ -1,15 +1,10 @@
 -- Самостоятельная сборка: запускать весь файл целиком.
 -- TIMKA_BOOT_BEGIN
 local bootPlayer = game:GetService("Players").LocalPlayer
-if not bootPlayer then
-    warn("ОТ ТИМКИ: запусти скрипт после входа в плейс")
-    return
-end
+if not bootPlayer then return end
 local bootHost = bootPlayer:WaitForChild("PlayerGui", 10)
-if not bootHost then
-    warn("ОТ ТИМКИ: PlayerGui не загрузился")
-    return
-end
+if not bootHost then return end
+
 local oldNotice = bootHost:FindFirstChild("TimkaStartupMessage")
 if oldNotice then oldNotice:Destroy() end
 local bootGui = Instance.new("ScreenGui")
@@ -27,7 +22,7 @@ bootText.Font = Enum.Font.Code
 bootText.TextWrapped = true
 bootText.TextXAlignment = Enum.TextXAlignment.Left
 bootText.TextYAlignment = Enum.TextYAlignment.Top
-bootText.Text = "ОТ ТИМКИ: запуск полной сборки..."
+bootText.Text = "ОТ ТИМКИ: запуск..."
 bootText.Parent = bootGui
 local bootClose = Instance.new("TextButton")
 bootClose.Size = UDim2.fromOffset(42, 34)
@@ -37,9 +32,6 @@ bootClose.Parent = bootGui
 bootClose.Activated:Connect(function() bootGui:Destroy() end)
 
 local bootOK, bootError = xpcall(function()
--- TIMKA_MAIN_BEGIN
--- ОТ ТИМКИ | MOBILE
-
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local Workspace = game:GetService("Workspace")
@@ -55,8 +47,7 @@ if previous then
     if previous.Parent then previous:Destroy() end
 end
 
--- СИСТЕМА СОХРАНЕНИЯ
-local saveFileName = "timka_settings.json"
+local saveFileName = "timka_settings_v2.json"
 local settings = {
     espEnabled = false, aimEnabled = false, infJumpEnabled = false,
     aim360 = true, autoReturn = false, espColor = {255, 65, 95},
@@ -64,7 +55,7 @@ local settings = {
     customJump = 50, customSize = 1, gazeESPEnabled = false,
     nearDistance = 60, preferVisible = true, preferLooking = true,
     ignoreFriends = true, distanceColors = true, greenFriends = true,
-    spinEnabled = false, spinSpeed = 50
+    spinEnabled = false, spinSpeed = 1500
 }
 if writefile and isfile and readfile then
     if isfile(saveFileName) then
@@ -79,7 +70,6 @@ local function saveSettings()
         pcall(function() writefile(saveFileName, game:GetService("HttpService"):JSONEncode(settings)) end)
     end
 end
-
 local active = true
 local connections, highlights, playerConnections = {}, {}, {}
 local camera = Workspace.CurrentCamera
@@ -112,18 +102,15 @@ local function connect(signal, callback)
     table.insert(connections, connection)
     return connection
 end
-
 local function new(class, parent, properties)
     local object = Instance.new(class)
     for key, value in pairs(properties or {}) do object[key] = value end
     object.Parent = parent
     return object
 end
-
 local function corner(object, radius)
     new("UICorner", object, {CornerRadius = UDim.new(0, radius or 10)})
 end
-
 local function stroke(object, color, transparency)
     return new("UIStroke", object, {Color = color or cyan, Thickness = 1, Transparency = transparency or 0.5})
 end
@@ -297,6 +284,7 @@ local function stepper(text, initial, minimum, maximum, step, decimals, callback
     end
     render()
 end
+
 local sightParams = RaycastParams.new()
 sightParams.FilterType = Enum.RaycastFilterType.Exclude
 sightParams.IgnoreWater = true
@@ -432,7 +420,6 @@ connect(RunService.Heartbeat, function(dt)
     local root = character and character:FindFirstChild("HumanoidRootPart")
     local humanoid = character and character:FindFirstChildOfClass("Humanoid")
     
-    -- Логика кручения
     if spinEnabled and root and humanoid and humanoid.Health > 0 then
         humanoid.AutoRotate = false
         root.CFrame = root.CFrame * CFrame.Angles(0, math.rad(spinSpeed * dt), 0)
@@ -550,6 +537,7 @@ local function applySize()
         if value and value:IsA("NumberValue") then value.Value = customSize end
     end
 end
+
 local pointStatus
 local function status(text) if pointStatus and active then pointStatus.Text = text end end
 local function returnToPoint(character)
@@ -609,7 +597,6 @@ connect(player.CharacterAdded, function(character)
         end
     end)
 end)
-
 row(112)
 label("Проводи по шапке, чтобы двигать меню", 30)
 label("— ТОЧКА ВОЗРОЖДЕНИЯ —")
@@ -646,7 +633,6 @@ stepper("Близко (studs)", settings.nearDistance, 10, 300, 10, 0, function(
     nearDistance = value; settings.nearDistance = value; updateESPColors(); saveSettings() 
 end)
 
-label("Близко — выбранный цвет, далеко — фиолетовый", 36, Color3.fromRGB(195, 207, 225))
 local colors = row(40)
 for index, item in ipairs({{"Красный", Color3.fromRGB(255, 65, 95)}, {"Зелёный", Color3.fromRGB(75, 245, 145)}, {"Синий", cyan}}) do
     local object = new("TextButton", colors, {Size = UDim2.new(1 / 3, -4, 1, 0), Position = UDim2.new((index - 1) / 3, 0, 0, 0), Text = item[1]})
@@ -670,11 +656,24 @@ toggle("Быстрое кручение", settings.spinEnabled, function(value)
         if hum then hum.AutoRotate = true end
     end
 end)
-stepper("Скорость кручения", settings.spinSpeed, 10, 360, 10, 0, function(value)
-    spinSpeed = value; settings.spinSpeed = value; saveSettings()
+
+local spinRow = row(44)
+local spinLabel = new("TextLabel", spinRow, {Size = UDim2.new(1, -110, 1, 0), BackgroundTransparency = 1, Text = "Скорость (1-5000):", TextColor3 = Color3.new(1, 1, 1), TextSize = 13, Font = Enum.Font.GothamBold, TextXAlignment = Enum.TextXAlignment.Left})
+local spinBox = new("TextBox", spinRow, {Size = UDim2.fromOffset(80, 32), Position = UDim2.new(1, -80, 0, 6), BackgroundColor3 = Color3.fromRGB(20, 30, 45), TextColor3 = Color3.new(1, 1, 1), Text = tostring(settings.spinSpeed), TextSize = 14, Font = Enum.Font.GothamBold, ZIndex = 5})
+corner(spinBox, 8)
+stroke(spinBox, cyan)
+spinBox.FocusLost:Connect(function()
+    local num = tonumber(spinBox.Text)
+    if num and num >= 1 and num <= 5000 then
+        spinSpeed = num
+        settings.spinSpeed = num
+        saveSettings()
+    else
+        spinBox.Text = tostring(spinSpeed)
+    end
 end)
 
-label("— ДРУЗЬЯ НА СЕРВЕРЕ —", 30)
+label("— СПИСОК ДРУЗЕЙ —", 30)
 local friendListOpen = false
 local friendHolder = row(0)
 friendHolder.Visible = false
@@ -713,75 +712,44 @@ toggle("Автонаводка", settings.aimEnabled, function(value)
     else returning = preAimRotation ~= nil end
     saveSettings()
 end)
-toggle("Аим на 360°", settings.aim360, function(value) 
-    aim360 = value; settings.aim360 = value; nextTargetScan = 0; saveSettings() 
-end)
-toggle("Приоритет без стен", settings.preferVisible, function(value) 
-    preferVisible = value; settings.preferVisible = value; nextTargetScan = 0; saveSettings() 
-end)
-toggle("Приоритет: смотрит на меня", settings.preferLooking, function(value) 
-    preferLooking = value; settings.preferLooking = value; nextTargetScan = 0; saveSettings() 
-end)
-toggle("Не целиться в друзей", settings.ignoreFriends, function(value) 
-    ignoreFriends = value; settings.ignoreFriends = value; nextTargetScan = 0; saveSettings() 
-end)
+toggle("Аим на 360°", settings.aim360, function(value) aim360 = value; settings.aim360 = value; nextTargetScan = 0; saveSettings() end)
+toggle("Приоритет без стен", settings.preferVisible, function(value) preferVisible = value; settings.preferVisible = value; nextTargetScan = 0; saveSettings() end)
+toggle("Приоритет: смотрит на меня", settings.preferLooking, function(value) preferLooking = value; settings.preferLooking = value; nextTargetScan = 0; saveSettings() end)
+toggle("Не целиться в друзей", settings.ignoreFriends, function(value) ignoreFriends = value; settings.ignoreFriends = value; nextTargetScan = 0; saveSettings() end)
 label("Без стены > смотрит на тебя > ближе", 32, Color3.fromRGB(195, 207, 225))
 friendStatus = label("Проверка друзей...", 38, Color3.fromRGB(195, 207, 225))
 refreshFriendStatus()
-button("Обновить проверку друзей", function() 
-    for _, other in ipairs(Players:GetPlayers()) do checkFriend(other) end
-    refreshFriendStatus() 
-end)
-stepper("FOV", settings.fovRadius, 20, 600, 10, 0, function(value) 
-    fovRadius = value; settings.fovRadius = value; saveSettings() 
-end)
-stepper("Плавность", settings.smoothness, 0, 1, 0.05, 2, function(value) 
-    smoothness = value; settings.smoothness = value; saveSettings() 
-end)
+button("Обновить проверку друзей", function() for _, other in ipairs(Players:GetPlayers()) do checkFriend(other) end; refreshFriendStatus() end)
+stepper("FOV", settings.fovRadius, 20, 600, 10, 0, function(value) fovRadius = value; settings.fovRadius = value; saveSettings() end)
+stepper("Плавность", settings.smoothness, 0, 1, 0.05, 2, function(value) smoothness = value; settings.smoothness = value; saveSettings() end)
 
 label("— ПЕРСОНАЖ —", 30)
-toggle("Бесконечный прыжок", settings.infJumpEnabled, function(value) 
-    infJumpEnabled = value; settings.infJumpEnabled = value; saveSettings() 
-end)
-stepper("Скорость", settings.customSpeed, 16, 200, 5, 0, function(value) 
-    customSpeed = value; settings.customSpeed = value; speedChanged = true; applyStats(); saveSettings() 
-end)
-stepper("Сила прыжка", settings.customJump, 50, 300, 10, 0, function(value) 
-    customJump = value; settings.customJump = value; jumpChanged = true; applyStats(); saveSettings() 
-end)
-stepper("Размер R15", settings.customSize, 0.5, 3, 0.1, 1, function(value) 
-    customSize = value; settings.customSize = value; sizeChanged = true; applySize(); saveSettings() 
+toggle("Бесконечный прыжок", settings.infJumpEnabled, function(value) infJumpEnabled = value; settings.infJumpEnabled = value; saveSettings() end)
+stepper("Скорость", settings.customSpeed, 16, 200, 5, 0, function(value) customSpeed = value; settings.customSpeed = value; speedChanged = true; applyStats(); saveSettings() end)
+stepper("Сила прыжка", settings.customJump, 50, 300, 10, 0, function(value) customJump = value; settings.customJump = value; jumpChanged = true; applyStats(); saveSettings() end)
+stepper("Размер R15", settings.customSize, 0.5, 3, 0.1, 1, function(value) customSize = value; settings.customSize = value; sizeChanged = true; applySize(); saveSettings() end)
+
+label("— КАМЕРА —", 30)
+local isThirdPerson = false
+button("Вид: От 1-го лица", function(btn)
+    isThirdPerson = not isThirdPerson
+    local cam = Workspace.CurrentCamera
+    if isThirdPerson then
+        cam.MaxZoomDistance = 20
+        cam.MinZoomDistance = 10
+        btn.Text = "Вид: От 3-го лица"
+    else
+        cam.MaxZoomDistance = 0.5
+        cam.MinZoomDistance = 0.5
+        btn.Text = "Вид: От 1-го лица"
+    end
 end)
 
-local splash = new("TextLabel", gui, {
-    AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5),
-    Size = UDim2.new(0.85, 0, 0, 84), BackgroundColor3 = Color3.fromRGB(12, 19, 34),
-    BackgroundTransparency = 1, Text = "ОТ ТИМКИ", TextColor3 = cyan,
-    TextTransparency = 1, TextSize = 36, Font = Enum.Font.GothamBlack, ZIndex = 20,
-})
-new("UISizeConstraint", splash, {MaxSize = Vector2.new(340, 84)})
-corner(splash, 16)
-local splashStroke = stroke(splash, violet, 1)
-task.spawn(function()
-    task.wait(0.3)
-    if not active then return end
-    TweenService:Create(splash, TweenInfo.new(0.4), {TextTransparency = 0, BackgroundTransparency = 0.05}):Play()
-    TweenService:Create(splashStroke, TweenInfo.new(0.4), {Transparency = 0.1}):Play()
-    task.wait(2.3)
-    if not active then return end
-    TweenService:Create(splash, TweenInfo.new(0.4), {TextTransparency = 1, BackgroundTransparency = 1}):Play()
-    TweenService:Create(splashStroke, TweenInfo.new(0.4), {Transparency = 1}):Play()
-    task.wait(0.4)
-    if active then splash:Destroy() end
-end)
-
-print("ОТ ТИМКИ: мобильное меню загружено")
 do
     local priorityEnabled = true
     local priorityTargets = {}
     local priorityRows = {}
     local listOpen = false
-
     local normalGetTarget = getTarget
     getTarget = function()
         if not priorityEnabled or not camera then return normalGetTarget() end
@@ -815,9 +783,7 @@ do
     end
 
     label("— ВЫБОР ИГРОКОВ ДЛЯ АИМА —", 32)
-    toggle("Приоритет выбранных", true, function(value) 
-        priorityEnabled = value; selectedTarget, nextTargetScan = nil, 0 
-    end)
+    toggle("Приоритет выбранных", true, function(value) priorityEnabled = value; selectedTarget, nextTargetScan = nil, 0 end)
     local summary = label("Выбрано: 0", 30)
     local listHolder, refreshRows
     local listButton = button("Показать игроков сервера", function()
@@ -869,13 +835,11 @@ do
         })
         styleButton(tpButton)
         priorityRows[other] = object
-        
         connect(object.Activated, function()
             priorityTargets[other.UserId] = not priorityTargets[other.UserId] or nil
             selectedTarget, nextTargetScan = nil, 0
             refreshRows()
         end)
-        
         connect(tpButton.Activated, function()
             if other.Parent ~= Players then status("ТП: игрок уже вышел") return end
             local myCharacter = player.Character
@@ -889,7 +853,6 @@ do
             local targetHumanoid = targetCharacter and targetCharacter:FindFirstChildOfClass("Humanoid")
             if not targetCharacter or not targetCharacter.Parent or not targetRoot or not targetRoot:IsA("BasePart") or not targetRoot:IsDescendantOf(Workspace) then status("ТП: цель не загружена. Подойди ближе и нажми снова") return end
             if not targetHumanoid or targetHumanoid.Health <= 0 then status("ТП: дождись возрождения этого игрока") return end
-            
             local ok, err = pcall(function()
                 local destination = targetRoot.CFrame * CFrame.new(4, 0, 0)
                 local pivotOffset = myRoot.CFrame:ToObjectSpace(myCharacter:GetPivot())
@@ -924,21 +887,17 @@ do
     refreshRows()
     button("Снять выбор со всех", function() priorityTargets = {}; selectedTarget, nextTargetScan = nil, 0; refreshRows() end)
 end
+
 do
     local flyEnabled, noclipEnabled = false, false
     local flySpeed = 50
     local flyRoot, flyHumanoid, attachment, velocity, orientation
-    local originalAutoRotate
-    local failedRoot
-    local held = {}
-    local collisions = {}
+    local originalAutoRotate, failedRoot
+    local held, collisions = {}, {}
     local moduleClosed = false
     local flyStatus
 
-    local pad = new("Frame", gui, {
-        Name = "TimkaFlightControls", Size = UDim2.fromOffset(76, 122),
-        Position = UDim2.new(1, -88, 0.5, -61), BackgroundTransparency = 1, Visible = false, ZIndex = 12,
-    })
+    local pad = new("Frame", gui, {Name = "TimkaFlightControls", Size = UDim2.fromOffset(76, 122), Position = UDim2.new(1, -88, 0.5, -61), BackgroundTransparency = 1, Visible = false, ZIndex = 12})
     local function verticalButton(text, y, direction)
         local object = new("TextButton", pad, {Size = UDim2.fromOffset(76, 56), Position = UDim2.fromOffset(0, y), Text = text})
         styleButton(object)
@@ -964,8 +923,7 @@ do
             flyRoot.AssemblyAngularVelocity = Vector3.zero
         end
         flyRoot, flyHumanoid, originalAutoRotate = nil, nil, nil
-        held = {}
-        pad.Visible = false
+        held, pad.Visible = {}, false
     end
 
     local function restoreCollisions()
@@ -995,13 +953,11 @@ do
 
     label("— ПОЛЁТ / NOCLIP —", 30)
     toggle("Полёт", false, function(value)
-        flyEnabled = value
-        failedRoot = nil
+        flyEnabled = value; failedRoot = nil
         if not value then stopFlight() end
         flyStatus.Text = value and "Полёт включён" or "Полёт выключен"
     end)
     stepper("Скорость полёта", 50, 10, 150, 10, 0, function(value) flySpeed = value end)
-    label("Джойстик — движение, кнопки справа — высота", 38, Color3.fromRGB(195, 207, 225))
     flyStatus = label("Полёт выключен", 30)
     toggle("Noclip / сквозь стены", false, function(value)
         noclipEnabled = value
@@ -1029,27 +985,19 @@ do
         local humanoid = character and character:FindFirstChildOfClass("Humanoid")
         if not root or not humanoid or humanoid.Health <= 0 or root.Anchored or humanoid.Sit then
             if flyRoot then stopFlight() end
-            flyStatus.Text = "Полёт: ожидаю живого персонажа вне сиденья"
+            flyStatus.Text = "Полёт: ожидаю живого персонажа"
             return
         end
         if root == failedRoot then return end
         if root ~= flyRoot or not velocity or not velocity.Parent or not orientation or not orientation.Parent then
             local ok = pcall(startFlight, root, humanoid)
-            if not ok then
-                stopFlight()
-                failedRoot = root
-                flyStatus.Text = "Полёт недоступен: выключи и включи снова"
-                return
-            end
+            if not ok then stopFlight(); failedRoot = root; flyStatus.Text = "Полёт недоступен"; return end
         end
         local currentCamera = Workspace.CurrentCamera
         if not currentCamera then velocity.VectorVelocity = Vector3.zero; return end
         local look = currentCamera.CFrame.LookVector
         local forward = Vector3.new(look.X, 0, look.Z)
-        if forward.Magnitude < 0.001 then
-            look = root.CFrame.LookVector
-            forward = Vector3.new(look.X, 0, look.Z)
-        end
+        if forward.Magnitude < 0.001 then forward = Vector3.new(root.CFrame.LookVector.X, 0, root.CFrame.LookVector.Z) end
         forward = forward.Magnitude > 0.001 and forward.Unit or Vector3.new(0, 0, -1)
         local right = Vector3.new(-forward.Z, 0, forward.X)
         local movement = humanoid.MoveDirection
@@ -1063,9 +1011,7 @@ do
                 if x ~= 0 or z ~= 0 then movement = right * x + forward * z end
                 vertical = vertical + key(Enum.KeyCode.Space) - math.max(key(Enum.KeyCode.LeftControl), key(Enum.KeyCode.RightControl))
             end
-        else
-            movement = Vector3.zero
-        end
+        else movement = Vector3.zero end
         local desired = movement + Vector3.new(0, math.clamp(vertical, -1, 1), 0)
         if desired.Magnitude > 1 then desired = desired.Unit end
         velocity.VectorVelocity = desired * flySpeed
@@ -1077,8 +1023,7 @@ do
         if moduleClosed then return end
         moduleClosed = true
         flyEnabled, noclipEnabled = false, false
-        stopFlight()
-        restoreCollisions()
+        stopFlight(); restoreCollisions()
     end)
 
     label("— ТЕМА МЕНЮ —", 30)
@@ -1121,6 +1066,30 @@ do
     button("Неоново-зелёная тема", function() applyTheme("неоново-зелёная", Color3.fromRGB(80, 255, 110), Color3.fromRGB(30, 180, 120)) end)
     button("Фиолетовая тема", function() applyTheme("фиолетовая", Color3.fromRGB(195, 130, 255), Color3.fromRGB(255, 100, 190)) end)
 end
+
+local splash = new("TextLabel", gui, {
+    AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5),
+    Size = UDim2.new(0.85, 0, 0, 84), BackgroundColor3 = Color3.fromRGB(12, 19, 34),
+    BackgroundTransparency = 1, Text = "ОТ ТИМКИ", TextColor3 = cyan,
+    TextTransparency = 1, TextSize = 36, Font = Enum.Font.GothamBlack, ZIndex = 20,
+})
+new("UISizeConstraint", splash, {MaxSize = Vector2.new(340, 84)})
+corner(splash, 16)
+local splashStroke = stroke(splash, violet, 1)
+task.spawn(function()
+    task.wait(0.3)
+    if not active then return end
+    TweenService:Create(splash, TweenInfo.new(0.4), {TextTransparency = 0, BackgroundTransparency = 0.05}):Play()
+    TweenService:Create(splashStroke, TweenInfo.new(0.4), {Transparency = 0.1}):Play()
+    task.wait(2.3)
+    if not active then return end
+    TweenService:Create(splash, TweenInfo.new(0.4), {TextTransparency = 1, BackgroundTransparency = 1}):Play()
+    TweenService:Create(splashStroke, TweenInfo.new(0.4), {Transparency = 1}):Play()
+    task.wait(0.4)
+    if active then splash:Destroy() end
+end)
+
+print("ОТ ТИМКИ: мобильное меню загружено")
 
 end, function(message) return tostring(message) end)
 if bootOK then
