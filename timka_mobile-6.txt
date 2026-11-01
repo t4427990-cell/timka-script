@@ -47,7 +47,7 @@ if previous then
     if previous.Parent then previous:Destroy() end
 end
 
-local saveFileName = "timka_settings_v2.json"
+local saveFileName = "timka_settings_v3.json"
 local settings = {
     espEnabled = false, aimEnabled = false, infJumpEnabled = false,
     aim360 = true, autoReturn = false, espColor = {255, 65, 95},
@@ -140,6 +140,7 @@ new("UIGradient", menu, {Color = ColorSequence.new(Color3.fromRGB(29, 42, 67), C
 
 local bgImage = new("ImageLabel", menu, {Size = UDim2.fromScale(1, 1), Position = UDim2.fromScale(0, 0), BackgroundTransparency = 1, Image = HORSE_IMAGE_ID, ScaleType = Enum.ScaleType.Crop, ZIndex = 0})
 new("Frame", menu, {Size = UDim2.fromScale(1, 1), Position = UDim2.fromScale(0, 0), BackgroundColor3 = Color3.fromRGB(0, 0, 0), BackgroundTransparency = 0.55, BorderSizePixel = 0, ZIndex = 1})
+
 local buttonInput, buttonStart, buttonPosition
 local buttonMoved = false
 local function clampOpenButton()
@@ -835,11 +836,13 @@ do
         })
         styleButton(tpButton)
         priorityRows[other] = object
+        
         connect(object.Activated, function()
             priorityTargets[other.UserId] = not priorityTargets[other.UserId] or nil
             selectedTarget, nextTargetScan = nil, 0
             refreshRows()
         end)
+        
         connect(tpButton.Activated, function()
             if other.Parent ~= Players then status("ТП: игрок уже вышел") return end
             local myCharacter = player.Character
@@ -847,12 +850,9 @@ do
             local myHumanoid = myCharacter and myCharacter:FindFirstChildOfClass("Humanoid")
             if not myCharacter or not myCharacter.Parent or not myRoot or not myRoot:IsA("BasePart") or not myHumanoid or myHumanoid.Health <= 0 then status("ТП: дождись своего возрождения") return end
             if myHumanoid.Sit then status("ТП: сначала встань с сиденья") return end
-            if myRoot.Anchored then status("ТП: персонаж закреплён и не может перемещаться") return end
             local targetCharacter = other.Character
             local targetRoot = targetCharacter and targetCharacter:FindFirstChild("HumanoidRootPart")
-            local targetHumanoid = targetCharacter and targetCharacter:FindFirstChildOfClass("Humanoid")
-            if not targetCharacter or not targetCharacter.Parent or not targetRoot or not targetRoot:IsA("BasePart") or not targetRoot:IsDescendantOf(Workspace) then status("ТП: цель не загружена. Подойди ближе и нажми снова") return end
-            if not targetHumanoid or targetHumanoid.Health <= 0 then status("ТП: дождись возрождения этого игрока") return end
+            if not targetCharacter or not targetCharacter.Parent or not targetRoot or not targetRoot:IsA("BasePart") or not targetRoot:IsDescendantOf(Workspace) then status("ТП: цель не загружена") return end
             local ok, err = pcall(function()
                 local destination = targetRoot.CFrame * CFrame.new(4, 0, 0)
                 local pivotOffset = myRoot.CFrame:ToObjectSpace(myCharacter:GetPivot())
@@ -862,10 +862,9 @@ do
             end)
             if ok then
                 selectedTarget, nextTargetScan = nil, 0
-                status("Попытка ТП к @" .. other.Name .. " выполнена; сервер может вернуть назад")
+                status("Попытка ТП к @" .. other.Name)
             else
-                status("ТП: не получилось переместиться")
-                warn("ОТ ТИМКИ — ошибка ТП: " .. tostring(err))
+                status("ТП: ошибка")
             end
         end)
         refreshRows()
@@ -888,6 +887,274 @@ do
     button("Снять выбор со всех", function() priorityTargets = {}; selectedTarget, nextTargetScan = nil, 0; refreshRows() end)
 end
 
+-- ===== ФЛИНГ И БЕЛЫЙ СПИСОК =====
+local whiteList = {}
+local isFlinging = false
+
+local function doFling(targetPlayer)
+    if not targetPlayer or not targetPlayer.Character then return end
+    if isFlinging then return end
+    isFlinging = true
+    local myChar = player.Character
+    local myRoot = myChar and myChar:FindFirstChild("HumanoidRootPart")
+    if not myRoot then isFlinging = false return end
+    
+    task.spawn(function()
+        local targetRoot = targetPlayer.Character:FindFirstChild("HumanoidRootPart")
+        if targetRoot then
+            myChar:PivotTo(targetRoot.CFrame * CFrame.new(0, 0, 2))
+            task.wait(0.1)
+        end
+        
+        local spinConn = RunService.Heartbeat:Connect(function(dt)
+            if not isFlinging or not myRoot.Parent then return end
+            myRoot.AssemblyAngularVelocity = Vector3.new(0, 9999999, 0)
+            myRoot.CFrame = myRoot.CFrame * CFrame.Angles(0, math.rad(9999 * dt), 0)
+        end)
+        
+        task.wait(1.5)
+        isFlinging = false
+        if spinConn then spinConn:Disconnect() end
+        local hum = myChar:FindFirstChildOfClass("Humanoid")
+        if hum then hum.Health = 0 end
+    end)
+end
+
+label("— БЕЛЫЙ СПИСОК (НЕ ЦЕЛИТЬСЯ) —", 30)
+local whiteHolder = row(0)
+whiteHolder.ClipsDescendants = true
+local whiteLayout = new("UIListLayout", whiteHolder, {Padding = UDim.new(0, 4), SortOrder = Enum.SortOrder.LayoutOrder})
+connect(whiteLayout:GetPropertyChangedSignal("AbsoluteContentSize"), function()
+    whiteHolder.Size = UDim2.new(1, 0, 0, whiteLayout.AbsoluteContentSize.Y)
+end)
+
+local function refreshWhiteUI()
+    for _, child in ipairs(whiteHolder:GetChildren()) do
+        if child:IsA("TextButton") then child:Destroy() end
+    end
+    for _, other in ipairs(Players:GetPlayers()) do
+        if other ~= player then
+            local isWhite = whiteList[other.UserId] == true
+            local btn = new("TextButton", whiteHolder, {Size = UDim2.new(1, 0, 0, 26), Text = (isWhite and "[X] " or "[ ] ") .. other.DisplayName})
+            styleButton(btn)
+            if isWhite then btn.TextColor3 = Color3.fromRGB(255, 100, 100) end
+            connect(btn.Activated, function()
+                whiteList[other.UserId] = not whiteList[other.UserId] or nil
+                refreshWhiteUI()
+                nextTargetScan = 0
+            end)
+        end
+    end
+end
+button("Обновить белый список", function() refreshWhiteUI() end)
+connect(Players.PlayerAdded, function() task.wait(1); refreshWhiteUI() end)
+connect(Players.PlayerRemoving, function(other) whiteList[other.UserId] = nil; task.wait(0.5); refreshWhiteUI() end)
+task.spawn(function() task.wait(1); refreshWhiteUI() end)
+-- ===== ИНТЕРАКТИВНЫЙ ИНТЕРФЕЙС НА ИГРОКАХ =====
+local playerUIs = {}
+local playerUIColors = {}
+
+local function removePlayerUI(other)
+    if playerUIs[other] then
+        playerUIs[other]:Destroy()
+        playerUIs[other] = nil
+    end
+    playerUIColors[other] = nil
+end
+
+local function createPlayerUI(other, character)
+    if other == player or not character then return end
+    removePlayerUI(other)
+
+    local head = character:FindFirstChild("Head") or character:FindFirstChild("HumanoidRootPart")
+    if not head then return end
+
+    local bg = new("BillboardGui", gui, {
+        Name = "PlayerUI_" .. other.UserId,
+        Adornee = head,
+        Size = UDim2.fromOffset(200, 200),
+        StudsOffset = Vector3.new(0, 2.5, 0),
+        AlwaysOnTop = true,
+        LightInfluence = 0,
+        MaxDistance = 1000
+    })
+    playerUIs[other] = bg
+
+    -- Кнопка "+"
+    local plusBtn = new("TextButton", bg, {
+        Size = UDim2.fromOffset(34, 34),
+        Position = UDim2.fromScale(0.5, 0.5),
+        AnchorPoint = Vector2.new(0.5, 0.5),
+        BackgroundColor3 = Color3.fromRGB(255, 65, 95),
+        Text = "+",
+        TextColor3 = Color3.new(1, 1, 1),
+        TextSize = 24,
+        Font = Enum.Font.GothamBold,
+        ZIndex = 2
+    })
+    corner(plusBtn, 17)
+    stroke(plusBtn, Color3.new(1, 1, 1), 0.2)
+    playerUIColors[other] = plusBtn
+
+    -- Мини-меню (сбоку)
+    local miniMenu = new("Frame", bg, {
+        Size = UDim2.fromOffset(130, 140),
+        Position = UDim2.new(0.5, 25, 0.5, -70),
+        BackgroundColor3 = Color3.fromRGB(15, 20, 35),
+        BorderSizePixel = 0,
+        Visible = false,
+        ZIndex = 3
+    })
+    corner(miniMenu, 8)
+    stroke(miniMenu, cyan, 0.2)
+
+    -- Ник игрока
+    new("TextLabel", miniMenu, {
+        Size = UDim2.new(1, -25, 0, 20),
+        Position = UDim2.new(0, 5, 0, 5),
+        BackgroundTransparency = 1,
+        Text = other.DisplayName,
+        TextColor3 = Color3.new(1, 1, 1),
+        TextSize = 11,
+        Font = Enum.Font.GothamBold,
+        TextXAlignment = Enum.TextXAlignment.Left,
+        TextTruncate = Enum.TextTruncate.AtEnd,
+        ZIndex = 4
+    })
+
+    -- Кнопка закрытия (крестик)
+    local closeBtn = new("TextButton", miniMenu, {
+        Size = UDim2.fromOffset(22, 22),
+        Position = UDim2.new(1, -22, 0, 0),
+        BackgroundColor3 = Color3.fromRGB(200, 40, 40),
+        Text = "X",
+        TextColor3 = Color3.new(1, 1, 1),
+        TextSize = 12,
+        Font = Enum.Font.GothamBold,
+        ZIndex = 4
+    })
+    corner(closeBtn, 4)
+
+    -- Кнопка Флинг
+    local flingBtn = new("TextButton", miniMenu, {
+        Size = UDim2.new(1, -10, 0, 30),
+        Position = UDim2.new(0, 5, 0, 32),
+        BackgroundColor3 = Color3.fromRGB(40, 50, 70),
+        Text = "Флинг",
+        TextColor3 = Color3.new(1, 1, 1),
+        TextSize = 12,
+        Font = Enum.Font.GothamBold,
+        ZIndex = 4
+    })
+    corner(flingBtn, 4)
+
+    -- Кнопка Белый список
+    local whiteBtn = new("TextButton", miniMenu, {
+        Size = UDim2.new(1, -10, 0, 30),
+        Position = UDim2.new(0, 5, 0, 66),
+        BackgroundColor3 = whiteList[other.UserId] and Color3.fromRGB(200, 40, 40) or Color3.fromRGB(40, 50, 70),
+        Text = "В Бел.Сп.",
+        TextColor3 = Color3.new(1, 1, 1),
+        TextSize = 12,
+        Font = Enum.Font.GothamBold,
+        ZIndex = 4
+    })
+    corner(whiteBtn, 4)
+
+    -- Кнопка ТП
+    local tpBtn = new("TextButton", miniMenu, {
+        Size = UDim2.new(1, -10, 0, 30),
+        Position = UDim2.new(0, 5, 0, 100),
+        BackgroundColor3 = Color3.fromRGB(40, 50, 70),
+        Text = "ТП к игроку",
+        TextColor3 = Color3.new(1, 1, 1),
+        TextSize = 12,
+        Font = Enum.Font.GothamBold,
+        ZIndex = 4
+    })
+    corner(tpBtn, 4)
+
+    -- Логика кнопок
+    local isOpen = false
+    connect(plusBtn.Activated, function()
+        isOpen = not isOpen
+        miniMenu.Visible = isOpen
+        plusBtn.Text = isOpen and "-" or "+"
+    end)
+
+    connect(closeBtn.Activated, function()
+        isOpen = false
+        miniMenu.Visible = false
+        plusBtn.Text = "+"
+    end)
+
+    connect(flingBtn.Activated, function()
+        doFling(other)
+        isOpen = false
+        miniMenu.Visible = false
+        plusBtn.Text = "+"
+    end)
+
+    connect(whiteBtn.Activated, function()
+        whiteList[other.UserId] = not whiteList[other.UserId] or nil
+        nextTargetScan = 0
+        whiteBtn.BackgroundColor3 = whiteList[other.UserId] and Color3.fromRGB(200, 40, 40) or Color3.fromRGB(40, 50, 70)
+    end)
+
+    connect(tpBtn.Activated, function()
+        if other.Parent ~= Players then return end
+        local myCharacter = player.Character
+        local myRoot = myCharacter and myCharacter:FindFirstChild("HumanoidRootPart")
+        local targetCharacter = other.Character
+        local targetRoot = targetCharacter and targetCharacter:FindFirstChild("HumanoidRootPart")
+        if myRoot and targetRoot then
+            myCharacter:PivotTo(targetRoot.CFrame * CFrame.new(0, 0, 3))
+            myRoot.AssemblyLinearVelocity = Vector3.zero
+            myRoot.AssemblyAngularVelocity = Vector3.zero
+        end
+    end)
+end
+
+-- Хук на появление/удаление игроков
+local function hookPlayerUI(other)
+    if other == player then return end
+    other.CharacterAdded:Connect(function(char)
+        task.wait(1)
+        createPlayerUI(other, char)
+    end)
+    if other.Character then
+        createPlayerUI(other, other.Character)
+    end
+end
+for _, other in ipairs(Players:GetPlayers()) do hookPlayerUI(other) end
+connect(Players.PlayerAdded, hookPlayerUI)
+connect(Players.PlayerRemoving, function(other)
+    removePlayerUI(other)
+end)
+LocalPlayer.CharacterAdded:Connect(function()
+    task.wait(1)
+    for _, other in ipairs(Players:GetPlayers()) do
+        if other ~= player and other.Character then
+            createPlayerUI(other, other.Character)
+        end
+    end
+end)
+
+-- Синхронизация цвета "+" с ESP
+local oldUpdateESPColors = updateESPColors
+function updateESPColors()
+    oldUpdateESPColors()
+    for other, plusBtn in pairs(playerUIColors) do
+        if plusBtn and plusBtn.Parent then
+            local highlight = highlights[other]
+            if highlight and highlight.Parent then
+                plusBtn.BackgroundColor3 = highlight.FillColor
+            else
+                plusBtn.BackgroundColor3 = Color3.fromRGB(255, 65, 95)
+            end
+        end
+    end
+end
 do
     local flyEnabled, noclipEnabled = false, false
     local flySpeed = 50
