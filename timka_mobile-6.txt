@@ -1107,58 +1107,115 @@ local function createPlayerUI(other, character)
         whiteBtn.BackgroundColor3 = whiteList[other.UserId] and Color3.fromRGB(200, 40, 40) or Color3.fromRGB(40, 50, 70)
     end)
 
-    connect(tpBtn.Activated, function()
-        if other.Parent ~= Players then return end
-        local myCharacter = player.Character
-        local myRoot = myCharacter and myCharacter:FindFirstChild("HumanoidRootPart")
-        local targetCharacter = other.Character
-        local targetRoot = targetCharacter and targetCharacter:FindFirstChild("HumanoidRootPart")
+-- ===== СИСТЕМА НАЖАТИЯ НА ИГРОКОВ (ClickDetector) =====
+local clickMenu = new("Frame", gui, {
+    Size = UDim2.fromOffset(160, 160),
+    Position = UDim2.new(0.5, -80, 0.5, -80),
+    BackgroundColor3 = Color3.fromRGB(15, 20, 35),
+    BorderSizePixel = 0,
+    Visible = false,
+    ZIndex = 100
+})
+corner(clickMenu, 8)
+stroke(clickMenu, cyan, 0.2)
+
+local targetNameLabel = new("TextLabel", clickMenu, {
+    Size = UDim2.new(1, -25, 0, 20),
+    Position = UDim2.new(0, 5, 0, 5),
+    BackgroundTransparency = 1,
+    Text = "Игрок",
+    TextColor3 = Color3.new(1, 1, 1),
+    TextSize = 12,
+    Font = Enum.Font.GothamBold,
+    TextXAlignment = Enum.TextXAlignment.Left,
+    ZIndex = 101
+})
+
+local closeClickMenu = new("TextButton", clickMenu, {
+    Size = UDim2.fromOffset(22, 22),
+    Position = UDim2.new(1, -22, 0, 0),
+    BackgroundColor3 = Color3.fromRGB(200, 40, 40),
+    Text = "X",
+    TextColor3 = Color3.new(1, 1, 1),
+    TextSize = 12,
+    Font = Enum.Font.GothamBold,
+    ZIndex = 101
+})
+corner(closeClickMenu, 4)
+
+local currentClickedPlayer = nil
+
+local function openMenuForPlayer(plr)
+    if plr == player then return end
+    currentClickedPlayer = plr
+    targetNameLabel.Text = plr.DisplayName
+    clickMenu.Visible = true
+end
+
+connect(closeClickMenu.Activated, function()
+    clickMenu.Visible = false
+    currentClickedPlayer = nil
+end)
+
+local flingClickBtn = new("TextButton", clickMenu, {Size = UDim2.new(1, -10, 0, 30), Position = UDim2.new(0, 5, 0, 32), BackgroundColor3 = Color3.fromRGB(40, 50, 70), Text = "Флинг", TextColor3 = Color3.new(1,1,1), TextSize = 12, Font = Enum.Font.GothamBold, ZIndex = 101})
+corner(flingClickBtn, 4)
+connect(flingClickBtn.Activated, function()
+    if currentClickedPlayer then doFling(currentClickedPlayer) end
+    clickMenu.Visible = false
+end)
+
+local whiteClickBtn = new("TextButton", clickMenu, {Size = UDim2.new(1, -10, 0, 30), Position = UDim2.new(0, 5, 0, 66), BackgroundColor3 = Color3.fromRGB(40, 50, 70), Text = "В Бел.Сп.", TextColor3 = Color3.new(1,1,1), TextSize = 12, Font = Enum.Font.GothamBold, ZIndex = 101})
+corner(whiteClickBtn, 4)
+connect(whiteClickBtn.Activated, function()
+    if currentClickedPlayer then
+        whiteList[currentClickedPlayer.UserId] = not whiteList[currentClickedPlayer.UserId] or nil
+        nextTargetScan = 0
+        whiteClickBtn.BackgroundColor3 = whiteList[currentClickedPlayer.UserId] and Color3.fromRGB(200, 40, 40) or Color3.fromRGB(40, 50, 70)
+    end
+end)
+
+local tpClickBtn = new("TextButton", clickMenu, {Size = UDim2.new(1, -10, 0, 30), Position = UDim2.new(0, 5, 0, 100), BackgroundColor3 = Color3.fromRGB(40, 50, 70), Text = "ТП к игроку", TextColor3 = Color3.new(1,1,1), TextSize = 12, Font = Enum.Font.GothamBold, ZIndex = 101})
+corner(tpClickBtn, 4)
+connect(tpClickBtn.Activated, function()
+    if currentClickedPlayer then
+        local myChar = player.Character
+        local myRoot = myChar and myChar:FindFirstChild("HumanoidRootPart")
+        local targetRoot = currentClickedPlayer.Character and currentClickedPlayer.Character:FindFirstChild("HumanoidRootPart")
         if myRoot and targetRoot then
-            myCharacter:PivotTo(targetRoot.CFrame * CFrame.new(0, 0, 3))
+            myChar:PivotTo(targetRoot.CFrame * CFrame.new(0, 0, 3))
             myRoot.AssemblyLinearVelocity = Vector3.zero
             myRoot.AssemblyAngularVelocity = Vector3.zero
         end
-    end)
+    end
+    clickMenu.Visible = false
+end)
+
+-- Добавляем ClickDetector на игроков
+local function addClickDetector(plr, char)
+    if plr == player or not char then return end
+    local partsToClick = {"HumanoidRootPart", "Head", "UpperTorso"}
+    for _, partName in ipairs(partsToClick) do
+        local part = char:FindFirstChild(partName)
+        if part and not part:FindFirstChild("TimkaClicker") then
+            local clicker = new("ClickDetector", part, {Name = "TimkaClicker", MaxActivationDistance = 5000})
+            connect(clicker.MouseClick, function()
+                openMenuForPlayer(plr)
+            end)
+        end
+    end
 end
 
-local function hookPlayerUI(other)
-    if other == player then return end
-    other.CharacterAdded:Connect(function(char)
+local function hookClickDetector(plr)
+    if plr == player then return end
+    if plr.Character then addClickDetector(plr, plr.Character) end
+    connect(plr.CharacterAdded, function(char)
         task.wait(1)
-        createPlayerUI(other, char)
+        addClickDetector(plr, char)
     end)
-    if other.Character then
-        createPlayerUI(other, other.Character)
-    end
 end
-for _, other in ipairs(Players:GetPlayers()) do hookPlayerUI(other) end
-connect(Players.PlayerAdded, hookPlayerUI)
-connect(Players.PlayerRemoving, function(other)
-    removePlayerUI(other)
-end)
-player.CharacterAdded:Connect(function()
-    task.wait(1)
-    for _, other in ipairs(Players:GetPlayers()) do
-        if other ~= player and other.Character then
-            createPlayerUI(other, other.Character)
-        end
-    end
-end)
 
-local oldUpdateESPColors = updateESPColors
-function updateESPColors()
-    oldUpdateESPColors()
-    for other, plusBtn in pairs(playerUIColors) do
-        if plusBtn and plusBtn.Parent then
-            local highlight = highlights[other]
-            if highlight and highlight.Parent then
-                plusBtn.BackgroundColor3 = highlight.FillColor
-            else
-                plusBtn.BackgroundColor3 = Color3.fromRGB(255, 65, 95)
-            end
-        end
-    end
-end
+for _, plr in ipairs(Players:GetPlayers()) do hookClickDetector(plr) end
+connect(Players.PlayerAdded, hookClickDetector)
 do
     local flyEnabled, noclipEnabled = false, false
     local flySpeed = 50
