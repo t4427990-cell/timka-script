@@ -486,3 +486,385 @@ connect(Players.PlayerRemoving, function(other)
     friendCache[other], friendPending[other], friendFailures[other] = nil, nil, nil
     nextTargetScan = 0
     task.defer(r
+    nextTargetScan = 0
+    task.defer(refreshFriendStatus)
+end)
+for _, other in ipairs(Players:GetPlayers()) do watchPlayer(other) end
+
+local colorTimer = 0
+connect(RunService.Heartbeat, function(dt)
+    colorTimer = colorTimer + dt
+    if espEnabled and colorTimer >= 0.15 then
+        colorTimer = 0
+        updateESPColors()
+    end
+end)
+
+-- AIMBOT
+local function getTarget()
+    if not camera then return nil end
+    local character = player.Character
+    local root = character and character:FindFirstChild("HumanoidRootPart")
+    local ownHumanoid = character and character:FindFirstChildOfClass("Humanoid")
+    if not root or not ownHumanoid or ownHumanoid.Health <= 0 then return nil end
+    local center = camera.ViewportSize * 0.5
+    local myHead = character:FindFirstChild("Head") or root
+    sightParams.FilterDescendantsInstances = {character}
+    local closest, distance = nil, math.huge
+    local bestVisible, bestLooking = -1, -1
+    for _, other in ipairs(Players:GetPlayers()) do
+        local targetCharacter = other ~= player and other.Character
+        if targetCharacter and (not ignoreFriends or friendCache[other] == false) then
+            local humanoid = targetCharacter:FindFirstChildOfClass("Humanoid")
+            local part = targetCharacter:FindFirstChild("Head") or targetCharacter:FindFirstChild("HumanoidRootPart")
+            if humanoid and humanoid.Health > 0 and part and part:IsA("BasePart") then
+                local point, visible = camera:WorldToViewportPoint(part.Position)
+                local inFov = visible and (Vector2.new(point.X, point.Y) - center).Magnitude <= fovRadius
+                if aim360 or inFov then
+                    local current = (root.Position - part.Position).Magnitude
+                    local clear = true
+                    if preferVisible or preferLooking then clear = clearSight(part, targetCharacter) end
+                    local visibleRank = (preferVisible and clear) and 1 or 0
+                    local lookingRank = (preferLooking and clear and looksAtMe(targetCharacter, myHead.Position)) and 1 or 0
+                    if visibleRank > bestVisible
+                        or (visibleRank == bestVisible and lookingRank > bestLooking)
+                        or (visibleRank == bestVisible and lookingRank == bestLooking and current < distance) then
+                        closest, distance = part, current
+                        bestVisible, bestLooking = visibleRank, lookingRank
+                    end
+                end
+            end
+        end
+    end
+    return closest
+end
+connect(UIS.InputBegan, function(input, processed)
+    if not processed and camera and input.UserInputType == Enum.UserInputType.Touch then
+        if input.Position.X > camera.ViewportSize.X * 0.45 then cameraTouches[input] = true end
+    end
+end)
+connect(UIS.InputChanged, function(input, processed)
+    local mouseMoved = input.UserInputType == Enum.UserInputType.MouseMovement and not processed
+    if mouseMoved or cameraTouches[input] then
+        lastManualInput = os.clock()
+        if returning then returning = false; preAimRotation = nil end
+    end
+end)
+connect(RunService.RenderStepped, function(dt)
+    camera = Workspace.CurrentCamera
+    if not camera then return end
+    if returning and preAimRotation then
+        local desired = CFrame.new(camera.CFrame.Position) * preAimRotation
+        camera.CFrame = camera.CFrame:Lerp(desired, 1 - math.exp(-dt / 0.1))
+        if (camera.CFrame.LookVector - desired.LookVector).Magnitude < 0.01 then
+            camera.CFrame = desired; returning = false; preAimRotation = nil
+        end
+        return
+    end
+    if not aimEnabled or os.clock() - lastManualInput < 0.35 then return end
+    local now = os.clock()
+    if now >= nextTargetScan then
+        selectedTarget = getTarget()
+        nextTargetScan = now + 0.1
+    end
+    local target = selectedTarget
+    if not target or not target.Parent then return end
+    if (target.Position - camera.CFrame.Position).Magnitude < 0.001 then return end
+    if not preAimRotation then preAimRotation = camera.CFrame.Rotation end
+    local desired = CFrame.lookAt(camera.CFrame.Position, target.Position)
+    camera.CFrame = smoothness <= 0 and desired or camera.CFrame:Lerp(desired, math.clamp(dt / smoothness, 0, 1))
+end)
+
+-- ПРЫЖОК И СТАТЫ
+connect(UIS.JumpRequest, function()
+    if not infJumpEnabled or UIS:GetFocusedTextBox() or os.clock() - lastJump < 0.12 then return end
+    local character = player.Character
+    local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+    if humanoid and humanoid.Health > 0 and not humanoid.Sit then
+        lastJump = os.clock()
+        humanoid:ChangeState(Enum.HumanoidStateType.Jumping)
+    end
+end)
+
+local function applyStats()
+    local character = player.Character
+    local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+    if not humanoid then return end
+    if speedChanged then humanoid.WalkSpeed = customSpeed end
+    if jumpChanged then humanoid.UseJumpPower = true; humanoid.JumpPower = customJump end
+end
+local scaleNames = {"BodyHeightScale", "BodyWidthScale", "BodyDepthScale", "HeadScale"}
+local function applySize()
+    if not sizeChanged then return end
+    local character = player.Character
+    local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+    if not humanoid then return end
+    for _, name in ipairs(scaleNames) do
+        local value = humanoid:FindFirstChild(name)
+        if value and value:IsA("NumberValue") then value.Value = customSize end
+    end
+end
+
+-- ТОЧКА И РЕСПАВН
+local pointStatus
+local function status(text) if pointStatus and active then pointStatus.Text = text end end
+local function returnToPoint(character)
+    if not savedRoot then return false, "Сначала сохрани точку" end
+    if not character or character ~= player.Character or not character.Parent then return false, "Персонаж ещё не готов" end
+    local root = character:FindFirstChild("HumanoidRootPart")
+    local humanoid = character:FindFirstChildOfClass("Humanoid")
+    if not root or not humanoid or humanoid.Health <= 0 then return false, "Дождись возрождения" end
+    if humanoid.Sit then return false, "Сначала встань с сиденья" end
+    local ok = pcall(function()
+        local offset = root.CFrame:ToObjectSpace(character:GetPivot())
+        character:PivotTo(savedRoot * offset)
+        root.AssemblyLinearVelocity = Vector3.zero
+        root.AssemblyAngularVelocity = Vector3.zero
+    end)
+    return ok, ok and "Возврат к точке выполнен" or "Не получилось переместиться"
+end
+local function savePoint()
+    local character = player.Character
+    local root = character and character:FindFirstChild("HumanoidRootPart")
+    local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+    if not root or not humanoid or humanoid.Health <= 0 then status("Дождись появления персонажа"); return end
+    savedRoot = root.CFrame
+    if marker then marker:Destroy() end
+    marker = new("Part", Workspace, {
+        Name = "TimkaSavedPoint", Shape = Enum.PartType.Cylinder,
+        Size = Vector3.new(0.08, 3, 3), Anchored = true,
+        CanCollide = false, CanTouch = false, CanQuery = false,
+        Material = Enum.Material.Neon, Color = cyan, Transparency = 0.35,
+        CFrame = CFrame.new(root.Position - Vector3.new(0, humanoid.HipHeight + root.Size.Y * 0.5 - 0.04, 0))
+            * CFrame.Angles(0, 0, math.rad(90)),
+    })
+    local position = savedRoot.Position
+    status(string.format("Сохранено: %.1f / %.1f / %.1f", position.X, position.Y, position.Z))
+end
+local function resetCharacter()
+    local character = player.Character
+    local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+    if humanoid and humanoid.Health > 0 then humanoid.Health = 0 end
+end
+
+connect(player.CharacterAdded, function(character)
+    preAimRotation, returning = nil, false
+    selectedTarget, nextTargetScan = nil, 0
+    task.spawn(function()
+        local root = character:WaitForChild("HumanoidRootPart", 10)
+        local humanoid = character:WaitForChild("Humanoid", 10)
+        if not active or not root or not humanoid or character ~= player.Character then return end
+        task.wait(0.8)
+        if not active or character ~= player.Character or not character.Parent then return end
+        applyStats(); applySize()
+        if autoReturn and savedRoot then
+            task.wait(0.2)
+            if not active or not autoReturn or not savedRoot or character ~= player.Character then return end
+            local _, message = returnToPoint(character)
+            status(message)
+        end
+    end)
+end)
+
+-- НАПОЛНЕНИЕ МЕНЮ
+row(112)
+label("Проводи по шапке, чтобы двигать меню", 30)
+label("— ТОЧКА ВОЗРОЖДЕНИЯ —")
+button("Сохранить точку здесь", savePoint)
+button("Вернуться к точке", function() local _, message = returnToPoint(player.Character); status(message) end)
+button("Убить себя (Респавн)", resetCharacter)
+toggle("Возврат после смерти", false, function(value)
+    autoReturn = value
+    if value and not savedRoot then status("Теперь нажми «Сохранить точку здесь»") end
+end)
+button("Удалить точку", function() savedRoot = nil; if marker then marker:Destroy(); marker = nil end; status("Точка не сохранена") end)
+pointStatus = label("Точка не сохранена", 38, Color3.fromRGB(210, 224, 240))
+
+label("— ВИЗУАЛЫ / ESP —")
+toggle("Подсветка игроков", false, function(value)
+    espEnabled = value
+    for _, other in ipairs(Players:GetPlayers()) do
+        if other ~= player then
+            if value then addESP(other, other.Character) else removeESP(other) end
+        end
+    end
+end)
+toggle("Режим: Смотрит на меня", false, function(value) gazeESPEnabled = value; updateESPColors() end)
+toggle("Цвет по расстоянию", true, function(value) distanceColors = value; updateESPColors() end)
+toggle("Друзья всегда зелёные", true, function(value) greenFriends = value; updateESPColors() end)
+stepper("Близко (studs)", 60, 10, 300, 10, 0, function(value) nearDistance = value; updateESPColors() end)
+label("Близко — выбранный цвет, далеко — фиолетовый", 36, Color3.fromRGB(195, 207, 225))
+local colors = row(40)
+for index, item in ipairs({{"Красный", Color3.fromRGB(255, 65, 95)}, {"Зелёный", Color3.fromRGB(75, 245, 145)}, {"Синий", cyan}}) do
+    local object = new("TextButton", colors, {Size = UDim2.new(1 / 3, -4, 1, 0), Position = UDim2.new((index - 1) / 3, 0, 0, 0), Text = item[1]})
+    styleButton(object)
+    object.TextSize = 11
+    object.TextColor3 = item[2]
+    connect(object.Activated, function() espColor = item[2]; updateESPColors() end)
+end
+
+label("— AIMBOT —")
+toggle("Автонаводка", false, function(value)
+    aimEnabled = value
+    selectedTarget, nextTargetScan = nil, 0
+    if value then preAimRotation = nil; returning = false
+    else returning = preAimRotation ~= nil end
+end)
+toggle("Аим на 360°", true, function(value) aim360 = value; nextTargetScan = 0 end)
+toggle("Приоритет без стен", true, function(value) preferVisible = value; nextTargetScan = 0 end)
+toggle("Приоритет: смотрит на меня", true, function(value) preferLooking = value; nextTargetScan = 0 end)
+toggle("Не целиться в друзей", true, function(value) ignoreFriends = value; nextTargetScan = 0 end)
+label("Без стены > смотрит на тебя > ближе", 32, Color3.fromRGB(195, 207, 225))
+friendStatus = label("Проверка друзей...", 38, Color3.fromRGB(195, 207, 225))
+refreshFriendStatus()
+button("Обновить проверку друзей", function() for _, other in ipairs(Players:GetPlayers()) do checkFriend(other) end; refreshFriendStatus() end)
+stepper("FOV", 150, 20, 600, 10, 0, function(value) fovRadius = value end)
+stepper("Плавность", 0.15, 0, 1, 0.05, 2, function(value) smoothness = value end)
+
+label("— ПЕРСОНАЖ —")
+toggle("Бесконечный прыжок", false, function(value) infJumpEnabled = value end)
+stepper("Скорость", 16, 16, 200, 5, 0, function(value) customSpeed = value; speedChanged = true; applyStats() end)
+stepper("Сила прыжка", 50, 50, 300, 10, 0, function(value) customJump = value; jumpChanged = true; applyStats() end)
+stepper("Размер R15", 1, 0.5, 3, 0.1, 1, function(value) customSize = value; sizeChanged = true; applySize() end)
+
+-- ЗАСТАВКА
+local splash = new("TextLabel", gui, {
+    AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5),
+    Size = UDim2.new(0.85, 0, 0, 84), BackgroundColor3 = Color3.fromRGB(12, 19, 34),
+    BackgroundTransparency = 1, Text = "ОТ ТИМКИ", TextColor3 = cyan,
+    TextTransparency = 1, TextSize = 36, Font = Enum.Font.GothamBlack, ZIndex = 20,
+})
+new("UISizeConstraint", splash, {MaxSize = Vector2.new(340, 84)})
+corner(splash, 16)
+local splashStroke = stroke(splash, violet, 1)
+task.spawn(function()
+    task.wait(0.3)
+    if not active then return end
+    TweenService:Create(splash, TweenInfo.new(0.4), {TextTransparency = 0, BackgroundTransparency = 0.05}):Play()
+    TweenService:Create(splashStroke, TweenInfo.new(0.4), {Transparency = 0.1}):Play()
+    task.wait(2.3)
+    if not active then return end
+    TweenService:Create(splash, TweenInfo.new(0.4), {TextTransparency = 1, BackgroundTransparency = 1}):Play()
+    TweenService:Create(splashStroke, TweenInfo.new(0.4), {Transparency = 1}):Play()
+    task.wait(0.4)
+    if active then splash:Destroy() end
+end)
+
+print("ОТ ТИМКИ: мобильное меню загружено")
+
+-- ВЫБОР ИГРОКОВ И ТП
+do
+    local priorityEnabled = true
+    local priorityTargets = {}
+    local priorityRows = {}
+    local listOpen = false
+
+    local normalGetTarget = getTarget
+    getTarget = function()
+        if not priorityEnabled or not camera then return normalGetTarget() end
+        local character = player.Character
+        local root = character and character:FindFirstChild("HumanoidRootPart")
+        local ownHumanoid = character and character:FindFirstChildOfClass("Humanoid")
+        if not root or not ownHumanoid or ownHumanoid.Health <= 0 then return nil end
+        local myHead = character:FindFirstChild("Head") or root
+        local center = camera.ViewportSize * 0.5
+        sightParams.FilterDescendantsInstances = {character}
+        local best, bestLooking, bestDistance = nil, -1, math.huge
+        for _, other in ipairs(Players:GetPlayers()) do
+            if other ~= player and priorityTargets[other.UserId] and (not ignoreFriends or friendCache[other] == false) then
+                local targetCharacter = other.Character
+                local humanoid = targetCharacter and targetCharacter:FindFirstChildOfClass("Humanoid")
+                local part = targetCharacter and (targetCharacter:FindFirstChild("Head") or targetCharacter:FindFirstChild("HumanoidRootPart"))
+                if humanoid and humanoid.Health > 0 and part and part:IsA("BasePart") then
+                    local point, onScreen = camera:WorldToViewportPoint(part.Position)
+                    local inFov = onScreen and (Vector2.new(point.X, point.Y) - center).Magnitude <= fovRadius
+                    if (aim360 or inFov) and clearSight(part, targetCharacter) then
+                        local distance = (root.Position - part.Position).Magnitude
+                        local looking = (preferLooking and looksAtMe(targetCharacter, myHead.Position)) and 1 or 0
+                        if looking > bestLooking or (looking == bestLooking and distance < bestDistance) then
+                            best, bestLooking, bestDistance = part, looking, distance
+                        end
+                    end
+                end
+            end
+        end
+        return best or normalGetTarget()
+    end
+
+    label("— ВЫБОР ИГРОКОВ ДЛЯ АИМА —", 32)
+    toggle("Приоритет выбранных", true, function(value) priorityEnabled = value; selectedTarget, nextTargetScan = nil, 0 end)
+    local summary = label("Выбрано: 0", 30)
+    local listHolder, refreshRows
+    local listButton = button("Показать игроков сервера", function()
+        listOpen = not listOpen
+        listHolder.Visible = listOpen
+        nextTargetScan = 0
+        if refreshRows then refreshRows() end
+    end)
+
+    listHolder = row(0)
+    listHolder.Visible = false
+    listHolder.ClipsDescendants = true
+    local listLayout = new("UIListLayout", listHolder, {Padding = UDim.new(0, 6), SortOrder = Enum.SortOrder.LayoutOrder})
+    connect(listLayout:GetPropertyChangedSignal("AbsoluteContentSize"), function()
+        listHolder.Size = UDim2.new(1, 0, 0, listLayout.AbsoluteContentSize.Y)
+    end)
+
+    refreshRows = function()
+        local sorted = {}
+        for other in pairs(priorityRows) do table.insert(sorted, other) end
+        table.sort(sorted, function(a, b) return string.lower(a.Name) < string.lower(b.Name) end)
+        local count = 0
+        for index, other in ipairs(sorted) do
+            local object = priorityRows[other]
+            local chosen = priorityTargets[other.UserId] == true
+            if chosen then count = count + 1 end
+            object.Parent.LayoutOrder = index
+            object.Text = (chosen and "[✓] " or "[ ] ") .. other.DisplayName .. "\n@" .. other.Name
+            object.BackgroundColor3 = chosen and Color3.fromRGB(62, 66, 135) or Color3.fromRGB(21, 35, 56)
+            object.TextColor3 = chosen and cyan or Color3.new(1, 1, 1)
+        end
+        summary.Text = string.format("Выбрано: %d · игроков: %d", count, #sorted)
+        listButton.Text = listOpen and "Скрыть список игроков" or "Показать игроков сервера"
+    end
+
+    local function addPriorityPlayer(other)
+        if other == player or priorityRows[other] then return end
+        local frame = new("Frame", listHolder, {
+            Name = "PriorityRow_" .. other.UserId,
+            Size = UDim2.new(1, 0, 0, 54),
+            BackgroundTransparency = 1, BorderSizePixel = 0,
+        })
+        local object = new("TextButton", frame, {
+            Size = UDim2.new(0.7, -3, 1, 0), Text = "", TextWrapped = true,
+        })
+        styleButton(object)
+        object.TextSize = 12
+        local tpButton = new("TextButton", frame, {
+            Size = UDim2.new(0.3, -3, 1, 0), Position = UDim2.new(0.7, 3, 0, 0), Text = "ТП",
+        })
+        styleButton(tpButton)
+        priorityRows[other] = object
+        connect(object.Activated, function()
+            priorityTargets[other.UserId] = not priorityTargets[other.UserId] or nil
+            selectedTarget, nextTargetScan = nil, 0
+            refreshRows()
+        end)
+        connect(tpButton.Activated, function()
+            if other.Parent ~= Players then status("ТП: игрок уже вышел") return end
+            local myCharacter = player.Character
+            local myRoot = myCharacter and myCharacter:FindFirstChild("HumanoidRootPart")
+            local myHumanoid = myCharacter and myCharacter:FindFirstChildOfClass("Humanoid")
+            if not myCharacter or not myCharacter.Parent or not myRoot or not myRoot:IsA("BasePart") or not myHumanoid or myHumanoid.Health <= 0 then status("ТП: дождись своего возрождения") return end
+            if myHumanoid.Sit then status("ТП: сначала встань с сиденья") return end
+            if myRoot.Anchored then status("ТП: персонаж закреплён и не может перемещаться") return end
+            local targetCharacter = other.Character
+            local targetRoot = targetCharacter and targetCharacter:FindFirstChild("HumanoidRootPart")
+            local targetHumanoid = targetCharacter and targetCharacter:FindFirstChildOfClass("Humanoid")
+            if not targetCharacter or not targetCharacter.Parent or not targetRoot or not targetRoot:IsA("BasePart") or not targetRoot:IsDescendantOf(Workspace) then status("ТП: цель не загружена. Подойди ближе и нажми снова") return end
+            if not targetHumanoid or targetHumanoid.Health <= 0 then status("ТП: дождись возрождения этого игрока") return end
+            local ok, err = pcall(function()
+                local destination = targetRoot.CFrame * CFrame.new(4, 0, 0)
+                local pivotOffset = myRoot.CFrame:ToObjectSpace(myCharacter:GetPivot())
+                myCharacter:PivotTo(destination * pivotOffset)
+        
