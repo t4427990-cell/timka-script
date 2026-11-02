@@ -1024,32 +1024,6 @@ stepper("Размер R15", settings.customSize, 0.5, 3, 0.1, 1, function(value)
     saveSettings() 
 end)
 
-label("— ХИТБОКС (СКВОЗЬ СТЕНЫ) —", 30)
-toggle("Hitbox Expander", settings.hitboxEnabled, function(value)
-    hitboxEnabled = value
-    settings.hitboxEnabled = value
-    saveSettings()
-    if not value then
-        for other, origSize in pairs(originalHitboxes) do
-            if other.Character then
-                local root = other.Character:FindFirstChild("HumanoidRootPart")
-                if root then 
-                    root.Size = origSize 
-                    root.Transparency = 1 
-                    root.CanCollide = true
-                end
-            end
-        end
-        originalHitboxes = {}
-    end
-end)
-
-stepper("Размер хитбокса", settings.hitboxSize, 2, 50, 1, 0, function(value) 
-    hitboxSize = value
-    settings.hitboxSize = value
-    saveSettings() 
-end)
-
 label("— КАМЕРА —", 30)
 local isThirdPerson = false
 button("Вид: От 1-го лица", function(btn)
