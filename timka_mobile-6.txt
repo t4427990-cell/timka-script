@@ -47,7 +47,7 @@ if previous then
     if previous.Parent then previous:Destroy() end
 end
 
-local saveFileName = "timka_settings_v5.json"
+local saveFileName = "timka_settings_v6.json"
 local settings = {
     espEnabled = false, aimEnabled = false, infJumpEnabled = false,
     aim360 = true, autoReturn = false, espColor = {255, 65, 95},
@@ -955,14 +955,15 @@ button("Обновить белый список", function() refreshWhiteUI() e
 connect(Players.PlayerAdded, function() task.wait(1); refreshWhiteUI() end)
 connect(Players.PlayerRemoving, function(other) whiteList[other.UserId] = nil; task.wait(0.5); refreshWhiteUI() end)
 task.spawn(function() task.wait(1); refreshWhiteUI() end)
--- ===== СИСТЕМА НАЖАТИЯ НА ИГРОКОВ (ClickDetector) =====
+-- ===== УМНАЯ СИСТЕМА НАЖАТИЯ НА ИГРОКА (СКВОЗЬ СТЕНЫ) =====
 local clickMenu = new("Frame", gui, {
     Size = UDim2.fromOffset(160, 160),
     Position = UDim2.new(0.5, -80, 0.5, -80),
     BackgroundColor3 = Color3.fromRGB(15, 20, 35),
     BorderSizePixel = 0,
     Visible = false,
-    ZIndex = 100
+    ZIndex = 100,
+    Active = true
 })
 corner(clickMenu, 8)
 stroke(clickMenu, cyan, 0.2)
@@ -992,13 +993,15 @@ local closeClickMenu = new("TextButton", clickMenu, {
 corner(closeClickMenu, 4)
 
 local currentClickedPlayer = nil
+local clickRadius = 80 -- Радиус в пикселях (чем больше, тем легче попасть)
 
 local function openMenuForPlayer(plr)
     if plr == player then return end
     currentClickedPlayer = plr
     targetNameLabel.Text = plr.DisplayName
     clickMenu.Visible = true
-    clickMenu.Position = UDim2.new(0.5, -80, 0.5, -80) -- Центрируем при открытии
+    -- Позиционируем меню по центру экрана, чтобы было удобно нажимать
+    clickMenu.Position = UDim2.new(0.5, -80, 0.5, -80) 
 end
 
 connect(closeClickMenu.Activated, function()
@@ -1039,32 +1042,50 @@ connect(tpClickBtn.Activated, function()
     clickMenu.Visible = false
 end)
 
--- Вешаем ClickDetector на игроков
-local function addClickDetector(plr, char)
-    if plr == player or not char then return end
-    local partsToClick = {"HumanoidRootPart", "Head", "UpperTorso"}
-    for _, partName in ipairs(partsToClick) do
-        local part = char:FindFirstChild(partName)
-        if part and not part:FindFirstChild("TimkaClicker") then
-            local clicker = new("ClickDetector", part, {Name = "TimkaClicker", MaxActivationDistance = 5000})
-            connect(clicker.MouseClick, function()
-                openMenuForPlayer(plr)
-            end)
+-- Функция поиска ближайшего игрока к точке тапа (сквозь стены)
+local function getClickedPlayer(inputPos)
+    local closestPlayer = nil
+    local minDistance = clickRadius
+    local cam = Workspace.CurrentCamera
+    if not cam then return nil end
+
+    for _, other in ipairs(Players:GetPlayers()) do
+        if other ~= player and other.Character then
+            -- Проверяем все базовые части (голова, торс, руки, ноги)
+            for _, part in ipairs(other.Character:GetChildren()) do
+                if part:IsA("BasePart") then
+                    local screenPos, onScreen = cam:WorldToViewportPoint(part.Position)
+                    if onScreen then
+                        local dist = (Vector2.new(screenPos.X, screenPos.Y) - Vector2.new(inputPos.X, inputPos.Y)).Magnitude
+                        if dist < minDistance then
+                            minDistance = dist
+                            closestPlayer = other
+                        end
+                    end
+                end
+            end
         end
     end
+    return closestPlayer
 end
 
-local function hookClickDetector(plr)
-    if plr == player then return end
-    if plr.Character then addClickDetector(plr, plr.Character) end
-    connect(plr.CharacterAdded, function(char)
-        task.wait(1)
-        addClickDetector(plr, char)
-    end)
-end
-
-for _, plr in ipairs(Players:GetPlayers()) do hookClickDetector(plr) end
-connect(Players.PlayerAdded, hookClickDetector)
+-- Отслеживаем клик/тап
+connect(UIS.InputBegan, function(input, gameProcessed)
+    if gameProcessed then return end -- Если нажали на интерфейс (кнопку), игнорируем
+    
+    if input.UserInputType == Enum.UserInputType.Touch or input.UserInputType == Enum.UserInputType.MouseButton1 then
+        local clicked = getClickedPlayer(input.Position)
+        if clicked then
+            openMenuForPlayer(clicked)
+        else
+            -- Если тапнули в пустоту, закрываем меню
+            if clickMenu.Visible then
+                clickMenu.Visible = false
+                currentClickedPlayer = nil
+            end
+        end
+    end
+end)
 do
     local flyEnabled, noclipEnabled = false, false
     local flySpeed = 50
@@ -1140,21 +1161,20 @@ do
         noclipEnabled = value
         if not value then restoreCollisions() end
     end)
-local function addClickDetector(plr, char)
-    if plr == player or not char then return end
-    -- Вешаем кликер на ВСЕ части тела (руки, ноги, торс, голова)
-    for _, part in ipairs(char:GetDescendants()) do
-        if part:IsA("BasePart") and not part:FindFirstChild("TimkaClicker") then
-            local clicker = new("ClickDetector", part, {
-                Name = "TimkaClicker", 
-                MaxActivationDistance = 5000 -- Огромная дистанция, чтобы нажимать издалека
-            })
-            connect(clicker.MouseClick, function()
-                openMenuForPlayer(plr)
-            end)
+
+    connect(RunService.Stepped, function()
+        if not noclipEnabled then return end
+        local character = player.Character
+        if not character then return end
+        for _, part in ipairs(character:GetDescendants()) do
+            if part:IsA("BasePart") then
+                if collisions[part] == nil then collisions[part] = part.CanCollide end
+                part.CanCollide = false
+            end
         end
-    end
-end
+    end)
+    connect(player.CharacterRemoving, function() stopFlight(); restoreCollisions(); failedRoot = nil end)
+
     local function key(code) return UIS:IsKeyDown(code) and 1 or 0 end
     connect(RunService.Heartbeat, function()
         if not flyEnabled then return end
