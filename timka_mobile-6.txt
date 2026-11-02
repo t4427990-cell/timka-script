@@ -1140,20 +1140,21 @@ do
         noclipEnabled = value
         if not value then restoreCollisions() end
     end)
-
-    connect(RunService.Stepped, function()
-        if not noclipEnabled then return end
-        local character = player.Character
-        if not character then return end
-        for _, part in ipairs(character:GetDescendants()) do
-            if part:IsA("BasePart") then
-                if collisions[part] == nil then collisions[part] = part.CanCollide end
-                part.CanCollide = false
-            end
+local function addClickDetector(plr, char)
+    if plr == player or not char then return end
+    -- Вешаем кликер на ВСЕ части тела (руки, ноги, торс, голова)
+    for _, part in ipairs(char:GetDescendants()) do
+        if part:IsA("BasePart") and not part:FindFirstChild("TimkaClicker") then
+            local clicker = new("ClickDetector", part, {
+                Name = "TimkaClicker", 
+                MaxActivationDistance = 5000 -- Огромная дистанция, чтобы нажимать издалека
+            })
+            connect(clicker.MouseClick, function()
+                openMenuForPlayer(plr)
+            end)
         end
-    end)
-    connect(player.CharacterRemoving, function() stopFlight(); restoreCollisions(); failedRoot = nil end)
-
+    end
+end
     local function key(code) return UIS:IsKeyDown(code) and 1 or 0 end
     connect(RunService.Heartbeat, function()
         if not flyEnabled then return end
