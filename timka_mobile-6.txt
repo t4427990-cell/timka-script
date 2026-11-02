@@ -47,7 +47,8 @@ if previous then
     if previous.Parent then previous:Destroy() end
 end
 
-local saveFileName = "timka_settings_v6.json"
+-- НОВЫЕ НАСТРОЙКИ (с учетом белого списка, хитбокса и валлбанга)
+local saveFileName = "timka_settings_v7.json"
 local settings = {
     espEnabled = false, aimEnabled = false, infJumpEnabled = false,
     aim360 = true, autoReturn = false, espColor = {255, 65, 95},
@@ -55,7 +56,9 @@ local settings = {
     customJump = 50, customSize = 1, gazeESPEnabled = false,
     nearDistance = 60, preferVisible = true, preferLooking = true,
     ignoreFriends = true, distanceColors = true, greenFriends = true,
-    spinEnabled = false, spinSpeed = 1500
+    spinEnabled = false, spinSpeed = 1500,
+    hitboxEnabled = false, hitboxSize = 10,
+    wallbangEnabled = false
 }
 if writefile and isfile and readfile then
     if isfile(saveFileName) then
@@ -80,6 +83,14 @@ local espColor = Color3.fromRGB(settings.espColor[1], settings.espColor[2], sett
 local fovRadius, smoothness = settings.fovRadius, settings.smoothness
 local customSpeed, customJump, customSize = settings.customSpeed, settings.customJump, settings.customSize
 local spinEnabled, spinSpeed = settings.spinEnabled, settings.spinSpeed
+
+-- Переменные для новых функций
+local hitboxEnabled, hitboxSize = settings.hitboxEnabled, settings.hitboxSize
+local wallbangEnabled = settings.wallbangEnabled
+local originalHitboxes = {}
+local savedWallCollisions = {}
+local whiteList = {}
+
 local speedChanged, jumpChanged, sizeChanged = false, false, false
 local savedRoot, marker = nil, nil
 local preAimRotation, returning = nil, false
@@ -117,11 +128,14 @@ local function stroke(object, color, transparency)
 end
 local gui = new("ScreenGui", playerGui, {Name = "CompactMenu", ResetOnSpawn = false, IgnoreGuiInset = false, ZIndexBehavior = Enum.ZIndexBehavior.Sibling, DisplayOrder = 50})
 local shutdown = new("BindableEvent", gui, {Name = "TimkaShutdown"})
+
 local function cleanup()
     if not active then return end
     active = false
     for _, connection in ipairs(connections) do connection:Disconnect() end
-    for _, list in pairs(playerConnections) do for _, connection in ipairs(list) do connection:Disconnect() end end
+    for _, list in pairs(playerConnections) do 
+        for _, connection in ipairs(list) do connection:Disconnect() end 
+    end
     for _, highlight in pairs(highlights) do highlight:Destroy() end
     if marker then marker:Destroy() end
     gui:Destroy()
@@ -129,26 +143,56 @@ end
 connect(shutdown.Event, cleanup)
 connect(gui.Destroying, cleanup)
 
-local openButton = new("TextButton", gui, {Size = UDim2.fromOffset(116, 44), Position = UDim2.fromOffset(12, 12), BackgroundColor3 = Color3.fromRGB(19, 28, 48), Text = "ОТ ТИМКИ", TextColor3 = cyan, TextSize = 15, Font = Enum.Font.GothamBold, ZIndex = 5})
+local openButton = new("TextButton", gui, {
+    Size = UDim2.fromOffset(116, 44), 
+    Position = UDim2.fromOffset(12, 12), 
+    BackgroundColor3 = Color3.fromRGB(19, 28, 48), 
+    Text = "ОТ ТИМКИ", 
+    TextColor3 = cyan, 
+    TextSize = 15, 
+    Font = Enum.Font.GothamBold, 
+    ZIndex = 5
+})
 corner(openButton, 12)
 stroke(openButton)
 
-local menu = new("Frame", gui, {Size = UDim2.fromOffset(310, 510), Position = UDim2.fromOffset(145, 35), BackgroundColor3 = Color3.fromRGB(12, 17, 31), BorderSizePixel = 0, Visible = false, Active = true, ClipsDescendants = true, ZIndex = 3})
+local menu = new("Frame", gui, {
+    Size = UDim2.fromOffset(310, 510), 
+    Position = UDim2.fromOffset(145, 35), 
+    BackgroundColor3 = Color3.fromRGB(12, 17, 31), 
+    BorderSizePixel = 0, 
+    Visible = false, 
+    Active = true, 
+    ClipsDescendants = true, 
+    ZIndex = 3
+})
 corner(menu, 16)
 stroke(menu, cyan, 0.25)
-new("UIGradient", menu, {Color = ColorSequence.new(Color3.fromRGB(29, 42, 67), Color3.fromRGB(12, 15, 29)), Rotation = 65})
+new("UIGradient", menu, {
+    Color = ColorSequence.new(Color3.fromRGB(29, 42, 67), Color3.fromRGB(12, 15, 29)), 
+    Rotation = 65
+})
 
 local bgImage = new("ImageLabel", menu, {
-    Size = UDim2.new(1, 0, 1, -48), Position = UDim2.fromOffset(0, 48),
-    BackgroundTransparency = 1, Image = HORSE_IMAGE_ID, ScaleType = Enum.ScaleType.Crop, ZIndex = 0
+    Size = UDim2.new(1, 0, 1, -48), 
+    Position = UDim2.fromOffset(0, 48),
+    BackgroundTransparency = 1, 
+    Image = HORSE_IMAGE_ID, 
+    ScaleType = Enum.ScaleType.Crop, 
+    ZIndex = 0
 })
 new("Frame", menu, {
-    Size = UDim2.new(1, 0, 1, -48), Position = UDim2.fromOffset(0, 48),
-    BackgroundColor3 = Color3.fromRGB(0, 0, 0), BackgroundTransparency = 0.55, BorderSizePixel = 0, ZIndex = 1
+    Size = UDim2.new(1, 0, 1, -48), 
+    Position = UDim2.fromOffset(0, 48),
+    BackgroundColor3 = Color3.fromRGB(0, 0, 0), 
+    BackgroundTransparency = 0.55, 
+    BorderSizePixel = 0, 
+    ZIndex = 1
 })
 
 local buttonInput, buttonStart, buttonPosition
 local buttonMoved = false
+
 local function clampOpenButton()
     local bounds, size = gui.AbsoluteSize, openButton.AbsoluteSize
     openButton.Position = UDim2.fromOffset(
@@ -156,16 +200,19 @@ local function clampOpenButton()
         math.clamp(openButton.Position.Y.Offset, 0, math.max(0, bounds.Y - size.Y))
     )
 end
+
 connect(openButton.InputBegan, function(input)
     if buttonInput then return end
     if input.UserInputType == Enum.UserInputType.Touch or input.UserInputType == Enum.UserInputType.MouseButton1 then
         buttonInput, buttonStart, buttonPosition, buttonMoved = input, input.Position, openButton.Position, false
     end
 end)
+
 connect(UIS.InputChanged, function(input)
     if not buttonInput then return end
     local isTouch = buttonInput.UserInputType == Enum.UserInputType.Touch
     if (isTouch and input ~= buttonInput) or (not isTouch and input.UserInputType ~= Enum.UserInputType.MouseMovement) then return end
+    
     local delta = input.Position - buttonStart
     if delta.Magnitude > 5 then buttonMoved = true end
     if buttonMoved then
@@ -173,6 +220,7 @@ connect(UIS.InputChanged, function(input)
         clampOpenButton()
     end
 end)
+
 connect(UIS.InputEnded, function(input)
     if input ~= buttonInput then return end
     if (input.Position - buttonStart).Magnitude > 5 then buttonMoved = true end
@@ -180,28 +228,81 @@ connect(UIS.InputEnded, function(input)
     buttonInput, buttonStart, buttonPosition = nil, nil, nil
     buttonMoved = false
     clampOpenButton()
+    
     if wasMoved then return end
     local point, topLeft, size = input.Position, openButton.AbsolutePosition, openButton.AbsoluteSize
     if point.X >= topLeft.X and point.X <= topLeft.X + size.X and point.Y >= topLeft.Y and point.Y <= topLeft.Y + size.Y then
         menu.Visible = not menu.Visible
     end
 end)
+
 connect(UIS.WindowFocusReleased, function()
     buttonInput, buttonStart, buttonPosition = nil, nil, nil
     buttonMoved = false
 end)
 
-local header = new("Frame", menu, {Size = UDim2.new(1, 0, 0, 48), BackgroundColor3 = Color3.fromRGB(16, 23, 41), BackgroundTransparency = 0.2, BorderSizePixel = 0, Active = true, ZIndex = 4})
-local dragArea = new("TextLabel", header, {Size = UDim2.new(1, -50, 1, 0), BackgroundTransparency = 1, Text = "ОТ ТИМКИ  ·  тяни здесь", TextColor3 = cyan, TextSize = 14, Font = Enum.Font.GothamBold, Active = true})
-local closeButton = new("TextButton", header, {Size = UDim2.fromOffset(40, 38), Position = UDim2.new(1, -44, 0, 5), BackgroundColor3 = Color3.fromRGB(123, 43, 71), Text = "×", TextColor3 = Color3.new(1, 1, 1), TextSize = 25, Font = Enum.Font.GothamBold})
+local header = new("Frame", menu, {
+    Size = UDim2.new(1, 0, 0, 48), 
+    BackgroundColor3 = Color3.fromRGB(16, 23, 41), 
+    BackgroundTransparency = 0.2, 
+    BorderSizePixel = 0, 
+    Active = true, 
+    ZIndex = 4
+})
+
+local dragArea = new("TextLabel", header, {
+    Size = UDim2.new(1, -50, 1, 0), 
+    BackgroundTransparency = 1, 
+    Text = "ОТ ТИМКИ  ·  тяни здесь", 
+    TextColor3 = cyan, 
+    TextSize = 14, 
+    Font = Enum.Font.GothamBold, 
+    Active = true
+})
+
+local closeButton = new("TextButton", header, {
+    Size = UDim2.fromOffset(40, 38), 
+    Position = UDim2.new(1, -44, 0, 5), 
+    BackgroundColor3 = Color3.fromRGB(123, 43, 71), 
+    Text = "×", 
+    TextColor3 = Color3.new(1, 1, 1), 
+    TextSize = 25, 
+    Font = Enum.Font.GothamBold
+})
 corner(closeButton, 10)
 
-local scroll = new("ScrollingFrame", menu, {Size = UDim2.new(1, -8, 1, -52), Position = UDim2.fromOffset(4, 48), BackgroundTransparency = 1, BorderSizePixel = 0, ScrollBarThickness = 4, ScrollBarImageColor3 = cyan, CanvasSize = UDim2.fromOffset(0, 0), ScrollingDirection = Enum.ScrollingDirection.Y, ElasticBehavior = Enum.ElasticBehavior.Never, Active = true, ZIndex = 3})
-local layout = new("UIListLayout", scroll, {Padding = UDim.new(0, 7), SortOrder = Enum.SortOrder.LayoutOrder})
-new("UIPadding", scroll, {PaddingLeft = UDim.new(0, 8), PaddingRight = UDim.new(0, 10), PaddingTop = UDim.new(0, 10), PaddingBottom = UDim.new(0, 12)})
-connect(layout:GetPropertyChangedSignal("AbsoluteContentSize"), function() scroll.CanvasSize = UDim2.fromOffset(0, layout.AbsoluteContentSize.Y + 22) end)
+local scroll = new("ScrollingFrame", menu, {
+    Size = UDim2.new(1, -8, 1, -52), 
+    Position = UDim2.fromOffset(4, 48), 
+    BackgroundTransparency = 1, 
+    BorderSizePixel = 0, 
+    ScrollBarThickness = 4, 
+    ScrollBarImageColor3 = cyan, 
+    CanvasSize = UDim2.fromOffset(0, 0), 
+    ScrollingDirection = Enum.ScrollingDirection.Y, 
+    ElasticBehavior = Enum.ElasticBehavior.Never, 
+    Active = true, 
+    ZIndex = 3
+})
+
+local layout = new("UIListLayout", scroll, {
+    Padding = UDim.new(0, 7), 
+    SortOrder = Enum.SortOrder.LayoutOrder
+})
+
+new("UIPadding", scroll, {
+    PaddingLeft = UDim.new(0, 8), 
+    PaddingRight = UDim.new(0, 10), 
+    PaddingTop = UDim.new(0, 10), 
+    PaddingBottom = UDim.new(0, 12)
+})
+
+connect(layout:GetPropertyChangedSignal("AbsoluteContentSize"), function() 
+    scroll.CanvasSize = UDim2.fromOffset(0, layout.AbsoluteContentSize.Y + 22) 
+end)
 
 local dragInput, dragStart, dragPosition
+
 local function clampMenu()
     local bounds, size = gui.AbsoluteSize, menu.AbsoluteSize
     menu.Position = UDim2.fromOffset(
@@ -209,6 +310,7 @@ local function clampMenu()
         math.clamp(menu.Position.Y.Offset, 0, math.max(0, bounds.Y - size.Y))
     )
 end
+
 local function fitMenu()
     local bounds = gui.AbsoluteSize
     menu.Size = UDim2.fromOffset(math.min(310, math.max(1, bounds.X - 16)), math.min(510, math.max(1, bounds.Y - 16)))
@@ -216,13 +318,16 @@ local function fitMenu()
     clampMenu()
     clampOpenButton()
 end
+
 connect(gui:GetPropertyChangedSignal("AbsoluteSize"), fitMenu)
+
 connect(dragArea.InputBegan, function(input)
     if dragInput then return end
     if input.UserInputType == Enum.UserInputType.Touch or input.UserInputType == Enum.UserInputType.MouseButton1 then
         dragInput, dragStart, dragPosition = input, input.Position, menu.Position
     end
 end)
+
 connect(UIS.InputChanged, function(input)
     if not dragInput then return end
     local touch = dragInput.UserInputType == Enum.UserInputType.Touch
@@ -232,22 +337,45 @@ connect(UIS.InputChanged, function(input)
         clampMenu()
     end
 end)
+
 connect(UIS.InputEnded, function(input)
     if input == dragInput then dragInput = nil end
     cameraTouches[input] = nil
 end)
-connect(closeButton.Activated, function() menu.Visible = false; dragInput = nil end)
+
+connect(closeButton.Activated, function() 
+    menu.Visible = false
+    dragInput = nil 
+end)
+
 task.defer(function() if active then fitMenu() end end)
 
 local order = 0
+
 local function row(height)
     order = order + 1
-    return new("Frame", scroll, {Size = UDim2.new(1, 0, 0, height), LayoutOrder = order, BackgroundTransparency = 1, BorderSizePixel = 0})
+    return new("Frame", scroll, {
+        Size = UDim2.new(1, 0, 0, height), 
+        LayoutOrder = order, 
+        BackgroundTransparency = 1, 
+        BorderSizePixel = 0
+    })
 end
+
 local function label(text, height, color)
     local holder = row(height or 26)
-    return new("TextLabel", holder, {Size = UDim2.fromScale(1, 1), BackgroundTransparency = 1, Text = text, TextColor3 = color or cyan, TextSize = 13, TextWrapped = true, Font = Enum.Font.GothamBold, TextXAlignment = Enum.TextXAlignment.Left})
+    return new("TextLabel", holder, {
+        Size = UDim2.fromScale(1, 1), 
+        BackgroundTransparency = 1, 
+        Text = text, 
+        TextColor3 = color or cyan, 
+        TextSize = 13, 
+        TextWrapped = true, 
+        Font = Enum.Font.GothamBold, 
+        TextXAlignment = Enum.TextXAlignment.Left
+    })
 end
+
 local function styleButton(button)
     button.BackgroundColor3 = Color3.fromRGB(21, 35, 56)
     button.BackgroundTransparency = 0.2
@@ -256,6 +384,7 @@ local function styleButton(button)
     button.TextSize = 13
     corner(button, 10)
 end
+
 local function button(text, callback)
     local holder = row(42)
     local object = new("TextButton", holder, {Size = UDim2.fromScale(1, 1), Text = text})
@@ -263,6 +392,7 @@ local function button(text, callback)
     connect(object.Activated, callback)
     return object
 end
+
 local function toggle(text, initial, callback)
     local state = initial
     local object
@@ -270,17 +400,37 @@ local function toggle(text, initial, callback)
         object.Text = text .. (state and ": ВКЛ" or ": ВЫКЛ")
         object.BackgroundColor3 = state and Color3.fromRGB(27, 104, 101) or Color3.fromRGB(21, 35, 56)
     end
-    object = button("", function() state = not state; render(); callback(state) end)
+    object = button("", function() 
+        state = not state
+        render()
+        callback(state) 
+    end)
     render()
     return object
 end
+
 local function stepper(text, initial, minimum, maximum, step, decimals, callback)
     local value = initial
     local holder = row(44)
-    local caption = new("TextLabel", holder, {Size = UDim2.new(1, -106, 1, 0), BackgroundTransparency = 1, TextColor3 = Color3.new(1, 1, 1), TextSize = 13, Font = Enum.Font.GothamBold, TextXAlignment = Enum.TextXAlignment.Left})
-    local function render() caption.Text = text .. ": " .. string.format("%." .. decimals .. "f", value) end
+    local caption = new("TextLabel", holder, {
+        Size = UDim2.new(1, -106, 1, 0), 
+        BackgroundTransparency = 1, 
+        TextColor3 = Color3.new(1, 1, 1), 
+        TextSize = 13, 
+        Font = Enum.Font.GothamBold, 
+        TextXAlignment = Enum.TextXAlignment.Left
+    })
+    
+    local function render() 
+        caption.Text = text .. ": " .. string.format("%." .. decimals .. "f", value) 
+    end
+    
     for index, direction in ipairs({-1, 1}) do
-        local object = new("TextButton", holder, {Size = UDim2.fromOffset(46, 42), Position = UDim2.new(1, -102 + (index - 1) * 52, 0, 1), Text = direction < 0 and "−" or "+"})
+        local object = new("TextButton", holder, {
+            Size = UDim2.fromOffset(46, 42), 
+            Position = UDim2.new(1, -102 + (index - 1) * 52, 0, 1), 
+            Text = direction < 0 and "−" or "+"
+        })
         styleButton(object)
         object.TextSize = 23
         connect(object.Activated, function()
@@ -445,25 +595,33 @@ local function getTarget()
     local root = character and character:FindFirstChild("HumanoidRootPart")
     local ownHumanoid = character and character:FindFirstChildOfClass("Humanoid")
     if not root or not ownHumanoid or ownHumanoid.Health <= 0 then return nil end
+    
     local center = camera.ViewportSize * 0.5
     local myHead = character:FindFirstChild("Head") or root
     sightParams.FilterDescendantsInstances = {character}
+    
     local closest, distance = nil, math.huge
     local bestVisible, bestLooking = -1, -1
+    
     for _, other in ipairs(Players:GetPlayers()) do
         local targetCharacter = other ~= player and other.Character
-        if targetCharacter and (not ignoreFriends or friendCache[other] == false) then
+        -- ТУТ ПРОВЕРКА БЕЛОГО СПИСКА (игнорируем тех, кто в нем)
+        if targetCharacter and not whiteList[other.UserId] and (not ignoreFriends or friendCache[other] == false) then
             local humanoid = targetCharacter:FindFirstChildOfClass("Humanoid")
             local part = targetCharacter:FindFirstChild("Head") or targetCharacter:FindFirstChild("HumanoidRootPart")
+            
             if humanoid and humanoid.Health > 0 and part and part:IsA("BasePart") then
                 local point, visible = camera:WorldToViewportPoint(part.Position)
                 local inFov = visible and (Vector2.new(point.X, point.Y) - center).Magnitude <= fovRadius
+                
                 if aim360 or inFov then
                     local current = (root.Position - part.Position).Magnitude
                     local clear = true
                     if preferVisible or preferLooking then clear = clearSight(part, targetCharacter) end
+                    
                     local visibleRank = (preferVisible and clear) and 1 or 0
                     local lookingRank = (preferLooking and clear and looksAtMe(targetCharacter, myHead.Position)) and 1 or 0
+                    
                     if visibleRank > bestVisible
                         or (visibleRank == bestVisible and lookingRank > bestLooking)
                         or (visibleRank == bestVisible and lookingRank == bestLooking and current < distance) then
@@ -482,6 +640,7 @@ connect(UIS.InputBegan, function(input, processed)
         if input.Position.X > camera.ViewportSize.X * 0.45 then cameraTouches[input] = true end
     end
 end)
+
 connect(UIS.InputChanged, function(input, processed)
     local mouseMoved = input.UserInputType == Enum.UserInputType.MouseMovement and not processed
     if mouseMoved or cameraTouches[input] then
@@ -532,6 +691,7 @@ local function applyStats()
     if speedChanged then humanoid.WalkSpeed = customSpeed end
     if jumpChanged then humanoid.UseJumpPower = true; humanoid.JumpPower = customJump end
 end
+
 local scaleNames = {"BodyHeightScale", "BodyWidthScale", "BodyDepthScale", "HeadScale"}
 local function applySize()
     if not sizeChanged then return end
@@ -546,6 +706,7 @@ end
 
 local pointStatus
 local function status(text) if pointStatus and active then pointStatus.Text = text end end
+
 local function returnToPoint(character)
     if not savedRoot then return false, "Сначала сохрани точку" end
     if not character or character ~= player.Character or not character.Parent then return false, "Персонаж ещё не готов" end
@@ -561,6 +722,7 @@ local function returnToPoint(character)
     end)
     return ok, ok and "Возврат к точке выполнен" or "Не получилось переместиться"
 end
+
 local function savePoint()
     local character = player.Character
     local root = character and character:FindFirstChild("HumanoidRootPart")
@@ -579,6 +741,7 @@ local function savePoint()
     local position = savedRoot.Position
     status(string.format("Сохранено: %.1f / %.1f / %.1f", position.X, position.Y, position.Z))
 end
+
 local function resetCharacter()
     local character = player.Character
     local humanoid = character and character:FindFirstChildOfClass("Humanoid")
@@ -607,18 +770,28 @@ row(112)
 label("Проводи по шапке, чтобы двигать меню", 30)
 label("— ТОЧКА ВОЗРОЖДЕНИЯ —")
 button("Сохранить точку здесь", savePoint)
-button("Вернуться к точке", function() local _, message = returnToPoint(player.Character); status(message) end)
+button("Вернуться к точке", function() 
+    local _, message = returnToPoint(player.Character)
+    status(message) 
+end)
 button("Убить себя (Респавн)", resetCharacter)
 toggle("Возврат после смерти", settings.autoReturn, function(value)
-    autoReturn = value; settings.autoReturn = value; saveSettings()
+    autoReturn = value
+    settings.autoReturn = value
+    saveSettings()
     if value and not savedRoot then status("Теперь нажми «Сохранить точку здесь»") end
 end)
-button("Удалить точку", function() savedRoot = nil; if marker then marker:Destroy(); marker = nil end; status("Точка не сохранена") end)
+button("Удалить точку", function() 
+    savedRoot = nil
+    if marker then marker:Destroy(); marker = nil end
+    status("Точка не сохранена") 
+end)
 pointStatus = label("Точка не сохранена", 38, Color3.fromRGB(210, 224, 240))
 
 label("— ВИЗУАЛЫ / ESP —")
 toggle("Подсветка игроков", settings.espEnabled, function(value)
-    espEnabled = value; settings.espEnabled = value
+    espEnabled = value
+    settings.espEnabled = value
     for _, other in ipairs(Players:GetPlayers()) do
         if other ~= player then
             if value then addESP(other, other.Character) else removeESP(other) end
@@ -626,22 +799,42 @@ toggle("Подсветка игроков", settings.espEnabled, function(value)
     end
     saveSettings()
 end)
+
 toggle("Режим: Смотрит на меня", settings.gazeESPEnabled, function(value) 
-    gazeESPEnabled = value; settings.gazeESPEnabled = value; updateESPColors(); saveSettings() 
+    gazeESPEnabled = value
+    settings.gazeESPEnabled = value
+    updateESPColors()
+    saveSettings() 
 end)
+
 toggle("Цвет по расстоянию", settings.distanceColors, function(value) 
-    distanceColors = value; settings.distanceColors = value; updateESPColors(); saveSettings() 
+    distanceColors = value
+    settings.distanceColors = value
+    updateESPColors()
+    saveSettings() 
 end)
+
 toggle("Друзья всегда зелёные", settings.greenFriends, function(value) 
-    greenFriends = value; settings.greenFriends = value; updateESPColors(); saveSettings() 
+    greenFriends = value
+    settings.greenFriends = value
+    updateESPColors()
+    saveSettings() 
 end)
+
 stepper("Близко (studs)", settings.nearDistance, 10, 300, 10, 0, function(value) 
-    nearDistance = value; settings.nearDistance = value; updateESPColors(); saveSettings() 
+    nearDistance = value
+    settings.nearDistance = value
+    updateESPColors()
+    saveSettings() 
 end)
 
 local colors = row(40)
 for index, item in ipairs({{"Красный", Color3.fromRGB(255, 65, 95)}, {"Зелёный", Color3.fromRGB(75, 245, 145)}, {"Синий", cyan}}) do
-    local object = new("TextButton", colors, {Size = UDim2.new(1 / 3, -4, 1, 0), Position = UDim2.new((index - 1) / 3, 0, 0, 0), Text = item[1]})
+    local object = new("TextButton", colors, {
+        Size = UDim2.new(1 / 3, -4, 1, 0), 
+        Position = UDim2.new((index - 1) / 3, 0, 0, 0), 
+        Text = item[1]
+    })
     styleButton(object)
     object.TextSize = 11
     object.TextColor3 = item[2]
@@ -655,7 +848,9 @@ end
 
 label("— КРУЧЕНИЕ —", 30)
 toggle("Быстрое кручение", settings.spinEnabled, function(value)
-    spinEnabled = value; settings.spinEnabled = value; saveSettings()
+    spinEnabled = value
+    settings.spinEnabled = value
+    saveSettings()
     if not value then
         local char = player.Character
         local hum = char and char:FindFirstChildOfClass("Humanoid")
@@ -664,8 +859,25 @@ toggle("Быстрое кручение", settings.spinEnabled, function(value)
 end)
 
 local spinRow = row(44)
-local spinLabel = new("TextLabel", spinRow, {Size = UDim2.new(1, -110, 1, 0), BackgroundTransparency = 1, Text = "Скорость (1-5000):", TextColor3 = Color3.new(1, 1, 1), TextSize = 13, Font = Enum.Font.GothamBold, TextXAlignment = Enum.TextXAlignment.Left})
-local spinBox = new("TextBox", spinRow, {Size = UDim2.fromOffset(80, 32), Position = UDim2.new(1, -80, 0, 6), BackgroundColor3 = Color3.fromRGB(20, 30, 45), TextColor3 = Color3.new(1, 1, 1), Text = tostring(settings.spinSpeed), TextSize = 14, Font = Enum.Font.GothamBold, ZIndex = 5})
+local spinLabel = new("TextLabel", spinRow, {
+    Size = UDim2.new(1, -110, 1, 0), 
+    BackgroundTransparency = 1, 
+    Text = "Скорость (1-5000):", 
+    TextColor3 = Color3.new(1, 1, 1), 
+    TextSize = 13, 
+    Font = Enum.Font.GothamBold, 
+    TextXAlignment = Enum.TextXAlignment.Left
+})
+local spinBox = new("TextBox", spinRow, {
+    Size = UDim2.fromOffset(80, 32), 
+    Position = UDim2.new(1, -80, 0, 6), 
+    BackgroundColor3 = Color3.fromRGB(20, 30, 45), 
+    TextColor3 = Color3.new(1, 1, 1), 
+    Text = tostring(settings.spinSpeed), 
+    TextSize = 14, 
+    Font = Enum.Font.GothamBold, 
+    ZIndex = 5
+})
 corner(spinBox, 8)
 stroke(spinBox, cyan)
 spinBox.FocusLost:Connect(function()
@@ -684,7 +896,10 @@ local friendListOpen = false
 local friendHolder = row(0)
 friendHolder.Visible = false
 friendHolder.ClipsDescendants = true
-local friendLayout = new("UIListLayout", friendHolder, {Padding = UDim.new(0, 4), SortOrder = Enum.SortOrder.LayoutOrder})
+local friendLayout = new("UIListLayout", friendHolder, {
+    Padding = UDim.new(0, 4), 
+    SortOrder = Enum.SortOrder.LayoutOrder
+})
 connect(friendLayout:GetPropertyChangedSignal("AbsoluteContentSize"), function()
     friendHolder.Size = UDim2.new(1, 0, 0, friendLayout.AbsoluteContentSize.Y)
 end)
@@ -696,10 +911,17 @@ local function refreshFriendsUI()
     for _, other in ipairs(Players:GetPlayers()) do
         if other ~= player then
             local isFriend = friendCache[other] == true
-            local btn = new("TextButton", friendHolder, {Size = UDim2.new(1, 0, 0, 26), Text = other.DisplayName .. (isFriend and " (Друг)" or " (Не друг)")})
+            local btn = new("TextButton", friendHolder, {
+                Size = UDim2.new(1, 0, 0, 26), 
+                Text = other.DisplayName .. (isFriend and " (Друг)" or " (Не друг)")
+            })
             styleButton(btn)
             if isFriend then btn.TextColor3 = friendColor end
-            connect(btn.Activated, function() checkFriend(other); task.wait(1); refreshFriendsUI() end)
+            connect(btn.Activated, function() 
+                checkFriend(other)
+                task.wait(1)
+                refreshFriendsUI() 
+            end)
         end
     end
 end
@@ -712,28 +934,121 @@ end)
 
 label("— AIMBOT —", 30)
 toggle("Автонаводка", settings.aimEnabled, function(value)
-    aimEnabled = value; settings.aimEnabled = value
+    aimEnabled = value
+    settings.aimEnabled = value
     selectedTarget, nextTargetScan = nil, 0
-    if value then preAimRotation = nil; returning = false
-    else returning = preAimRotation ~= nil end
+    if value then 
+        preAimRotation = nil
+        returning = false
+    else 
+        returning = preAimRotation ~= nil 
+    end
     saveSettings()
 end)
-toggle("Аим на 360°", settings.aim360, function(value) aim360 = value; settings.aim360 = value; nextTargetScan = 0; saveSettings() end)
-toggle("Приоритет без стен", settings.preferVisible, function(value) preferVisible = value; settings.preferVisible = value; nextTargetScan = 0; saveSettings() end)
-toggle("Приоритет: смотрит на меня", settings.preferLooking, function(value) preferLooking = value; settings.preferLooking = value; nextTargetScan = 0; saveSettings() end)
-toggle("Не целиться в друзей", settings.ignoreFriends, function(value) ignoreFriends = value; settings.ignoreFriends = value; nextTargetScan = 0; saveSettings() end)
+toggle("Аим на 360°", settings.aim360, function(value) 
+    aim360 = value
+    settings.aim360 = value
+    nextTargetScan = 0
+    saveSettings() 
+end)
+
+toggle("Приоритет без стен", settings.preferVisible, function(value) 
+    preferVisible = value
+    settings.preferVisible = value
+    nextTargetScan = 0
+    saveSettings() 
+end)
+
+toggle("Приоритет: смотрит на меня", settings.preferLooking, function(value) 
+    preferLooking = value
+    settings.preferLooking = value
+    nextTargetScan = 0
+    saveSettings() 
+end)
+
+toggle("Не целиться в друзей", settings.ignoreFriends, function(value) 
+    ignoreFriends = value
+    settings.ignoreFriends = value
+    nextTargetScan = 0
+    saveSettings() 
+end)
+
 label("Без стены > смотрит на тебя > ближе", 32, Color3.fromRGB(195, 207, 225))
 friendStatus = label("Проверка друзей...", 38, Color3.fromRGB(195, 207, 225))
 refreshFriendStatus()
-button("Обновить проверку друзей", function() for _, other in ipairs(Players:GetPlayers()) do checkFriend(other) end; refreshFriendStatus() end)
-stepper("FOV", settings.fovRadius, 20, 600, 10, 0, function(value) fovRadius = value; settings.fovRadius = value; saveSettings() end)
-stepper("Плавность", settings.smoothness, 0, 1, 0.05, 2, function(value) smoothness = value; settings.smoothness = value; saveSettings() end)
+button("Обновить проверку друзей", function() 
+    for _, other in ipairs(Players:GetPlayers()) do checkFriend(other) end
+    refreshFriendStatus() 
+end)
+
+stepper("FOV", settings.fovRadius, 20, 600, 10, 0, function(value) 
+    fovRadius = value
+    settings.fovRadius = value
+    saveSettings() 
+end)
+
+stepper("Плавность", settings.smoothness, 0, 1, 0.05, 2, function(value) 
+    smoothness = value
+    settings.smoothness = value
+    saveSettings() 
+end)
 
 label("— ПЕРСОНАЖ —", 30)
-toggle("Бесконечный прыжок", settings.infJumpEnabled, function(value) infJumpEnabled = value; settings.infJumpEnabled = value; saveSettings() end)
-stepper("Скорость", settings.customSpeed, 16, 200, 5, 0, function(value) customSpeed = value; settings.customSpeed = value; speedChanged = true; applyStats(); saveSettings() end)
-stepper("Сила прыжка", settings.customJump, 50, 300, 10, 0, function(value) customJump = value; settings.customJump = value; jumpChanged = true; applyStats(); saveSettings() end)
-stepper("Размер R15", settings.customSize, 0.5, 3, 0.1, 1, function(value) customSize = value; settings.customSize = value; sizeChanged = true; applySize(); saveSettings() end)
+toggle("Бесконечный прыжок", settings.infJumpEnabled, function(value) 
+    infJumpEnabled = value
+    settings.infJumpEnabled = value
+    saveSettings() 
+end)
+
+stepper("Скорость", settings.customSpeed, 16, 200, 5, 0, function(value) 
+    customSpeed = value
+    settings.customSpeed = value
+    speedChanged = true
+    applyStats()
+    saveSettings() 
+end)
+
+stepper("Сила прыжка", settings.customJump, 50, 300, 10, 0, function(value) 
+    customJump = value
+    settings.customJump = value
+    jumpChanged = true
+    applyStats()
+    saveSettings() 
+end)
+
+stepper("Размер R15", settings.customSize, 0.5, 3, 0.1, 1, function(value) 
+    customSize = value
+    settings.customSize = value
+    sizeChanged = true
+    applySize()
+    saveSettings() 
+end)
+
+label("— ХИТБОКС (СКВОЗЬ СТЕНЫ) —", 30)
+toggle("Hitbox Expander", settings.hitboxEnabled, function(value)
+    hitboxEnabled = value
+    settings.hitboxEnabled = value
+    saveSettings()
+    if not value then
+        for other, origSize in pairs(originalHitboxes) do
+            if other.Character then
+                local root = other.Character:FindFirstChild("HumanoidRootPart")
+                if root then 
+                    root.Size = origSize 
+                    root.Transparency = 1 
+                    root.CanCollide = true
+                end
+            end
+        end
+        originalHitboxes = {}
+    end
+end)
+
+stepper("Размер хитбокса", settings.hitboxSize, 2, 50, 1, 0, function(value) 
+    hitboxSize = value
+    settings.hitboxSize = value
+    saveSettings() 
+end)
 
 label("— КАМЕРА —", 30)
 local isThirdPerson = false
@@ -757,27 +1072,35 @@ do
     local priorityRows = {}
     local listOpen = false
     local normalGetTarget = getTarget
+    
+    -- Переопределяем функцию поиска цели с учетом приоритета
     getTarget = function()
         if not priorityEnabled or not camera then return normalGetTarget() end
         local character = player.Character
         local root = character and character:FindFirstChild("HumanoidRootPart")
         local ownHumanoid = character and character:FindFirstChildOfClass("Humanoid")
         if not root or not ownHumanoid or ownHumanoid.Health <= 0 then return nil end
+        
         local myHead = character:FindFirstChild("Head") or root
         local center = camera.ViewportSize * 0.5
         sightParams.FilterDescendantsInstances = {character}
+        
         local best, bestLooking, bestDistance = nil, -1, math.huge
         for _, other in ipairs(Players:GetPlayers()) do
-            if other ~= player and priorityTargets[other.UserId] and (not ignoreFriends or friendCache[other] == false) then
+            -- Проверка белого списка для приоритетных целей
+            if other ~= player and not whiteList[other.UserId] and priorityTargets[other.UserId] and (not ignoreFriends or friendCache[other] == false) then
                 local targetCharacter = other.Character
                 local humanoid = targetCharacter and targetCharacter:FindFirstChildOfClass("Humanoid")
                 local part = targetCharacter and (targetCharacter:FindFirstChild("Head") or targetCharacter:FindFirstChild("HumanoidRootPart"))
+                
                 if humanoid and humanoid.Health > 0 and part and part:IsA("BasePart") then
                     local point, onScreen = camera:WorldToViewportPoint(part.Position)
                     local inFov = onScreen and (Vector2.new(point.X, point.Y) - center).Magnitude <= fovRadius
+                    
                     if (aim360 or inFov) and clearSight(part, targetCharacter) then
                         local distance = (root.Position - part.Position).Magnitude
                         local looking = (preferLooking and looksAtMe(targetCharacter, myHead.Position)) and 1 or 0
+                        
                         if looking > bestLooking or (looking == bestLooking and distance < bestDistance) then
                             best, bestLooking, bestDistance = part, looking, distance
                         end
@@ -789,9 +1112,14 @@ do
     end
 
     label("— ВЫБОР ИГРОКОВ ДЛЯ АИМА —", 32)
-    toggle("Приоритет выбранных", true, function(value) priorityEnabled = value; selectedTarget, nextTargetScan = nil, 0 end)
+    toggle("Приоритет выбранных", true, function(value) 
+        priorityEnabled = value
+        selectedTarget, nextTargetScan = nil, 0 
+    end)
+    
     local summary = label("Выбрано: 0", 30)
     local listHolder, refreshRows
+    
     local listButton = button("Показать игроков сервера", function()
         listOpen = not listOpen
         listHolder.Visible = listOpen
@@ -802,7 +1130,12 @@ do
     listHolder = row(0)
     listHolder.Visible = false
     listHolder.ClipsDescendants = true
-    local listLayout = new("UIListLayout", listHolder, {Padding = UDim.new(0, 6), SortOrder = Enum.SortOrder.LayoutOrder})
+    
+    local listLayout = new("UIListLayout", listHolder, {
+        Padding = UDim.new(0, 6), 
+        SortOrder = Enum.SortOrder.LayoutOrder
+    })
+    
     connect(listLayout:GetPropertyChangedSignal("AbsoluteContentSize"), function()
         listHolder.Size = UDim2.new(1, 0, 0, listLayout.AbsoluteContentSize.Y)
     end)
@@ -810,16 +1143,19 @@ do
         local sorted = {}
         for other in pairs(priorityRows) do table.insert(sorted, other) end
         table.sort(sorted, function(a, b) return string.lower(a.Name) < string.lower(b.Name) end)
+        
         local count = 0
         for index, other in ipairs(sorted) do
             local object = priorityRows[other]
             local chosen = priorityTargets[other.UserId] == true
             if chosen then count = count + 1 end
+            
             object.Parent.LayoutOrder = index
             object.Text = (chosen and "[✓] " or "[ ] ") .. other.DisplayName .. "\n@" .. other.Name
             object.BackgroundColor3 = chosen and Color3.fromRGB(62, 66, 135) or Color3.fromRGB(21, 35, 56)
             object.TextColor3 = chosen and cyan or Color3.new(1, 1, 1)
         end
+        
         summary.Text = string.format("Выбрано: %d · игроков: %d", count, #sorted)
         listButton.Text = listOpen and "Скрыть список игроков" or "Показать игроков сервера"
     end
@@ -831,15 +1167,18 @@ do
             Size = UDim2.new(1, 0, 0, 54),
             BackgroundTransparency = 1, BorderSizePixel = 0,
         })
+        
         local object = new("TextButton", frame, {
             Size = UDim2.new(0.7, -3, 1, 0), Text = "", TextWrapped = true,
         })
         styleButton(object)
         object.TextSize = 12
+        
         local tpButton = new("TextButton", frame, {
             Size = UDim2.new(0.3, -3, 1, 0), Position = UDim2.new(0.7, 3, 0, 0), Text = "ТП",
         })
         styleButton(tpButton)
+        
         priorityRows[other] = object
         
         connect(object.Activated, function()
@@ -853,11 +1192,18 @@ do
             local myCharacter = player.Character
             local myRoot = myCharacter and myCharacter:FindFirstChild("HumanoidRootPart")
             local myHumanoid = myCharacter and myCharacter:FindFirstChildOfClass("Humanoid")
-            if not myCharacter or not myCharacter.Parent or not myRoot or not myRoot:IsA("BasePart") or not myHumanoid or myHumanoid.Health <= 0 then status("ТП: дождись своего возрождения") return end
+            
+            if not myCharacter or not myCharacter.Parent or not myRoot or not myRoot:IsA("BasePart") or not myHumanoid or myHumanoid.Health <= 0 then 
+                status("ТП: дождись своего возрождения") return 
+            end
             if myHumanoid.Sit then status("ТП: сначала встань с сиденья") return end
+            
             local targetCharacter = other.Character
             local targetRoot = targetCharacter and targetCharacter:FindFirstChild("HumanoidRootPart")
-            if not targetCharacter or not targetCharacter.Parent or not targetRoot or not targetRoot:IsA("BasePart") or not targetRoot:IsDescendantOf(Workspace) then status("ТП: цель не загружена") return end
+            if not targetCharacter or not targetCharacter.Parent or not targetRoot or not targetRoot:IsA("BasePart") or not targetRoot:IsDescendantOf(Workspace) then 
+                status("ТП: цель не загружена") return 
+            end
+            
             local ok, err = pcall(function()
                 local destination = targetRoot.CFrame * CFrame.new(4, 0, 0)
                 local pivotOffset = myRoot.CFrame:ToObjectSpace(myCharacter:GetPivot())
@@ -865,6 +1211,7 @@ do
                 myRoot.AssemblyLinearVelocity = Vector3.zero
                 myRoot.AssemblyAngularVelocity = Vector3.zero
             end)
+            
             if ok then
                 selectedTarget, nextTargetScan = nil, 0
                 status("Попытка ТП к @" .. other.Name)
@@ -887,44 +1234,13 @@ do
         selectedTarget, nextTargetScan = nil, 0
         refreshRows()
     end)
+    
     for _, other in ipairs(Players:GetPlayers()) do addPriorityPlayer(other) end
     refreshRows()
     button("Снять выбор со всех", function() priorityTargets = {}; selectedTarget, nextTargetScan = nil, 0; refreshRows() end)
 end
 
--- ===== ФЛИНГ И БЕЛЫЙ СПИСОК =====
-local whiteList = {}
-local isFlinging = false
-
-local function doFling(targetPlayer)
-    if not targetPlayer or not targetPlayer.Character then return end
-    if isFlinging then return end
-    isFlinging = true
-    local myChar = player.Character
-    local myRoot = myChar and myChar:FindFirstChild("HumanoidRootPart")
-    if not myRoot then isFlinging = false return end
-    
-    task.spawn(function()
-        local targetRoot = targetPlayer.Character:FindFirstChild("HumanoidRootPart")
-        if targetRoot then
-            myChar:PivotTo(targetRoot.CFrame * CFrame.new(0, 0, 2))
-            task.wait(0.1)
-        end
-        
-        local spinConn = RunService.Heartbeat:Connect(function(dt)
-            if not isFlinging or not myRoot.Parent then return end
-            myRoot.AssemblyAngularVelocity = Vector3.new(0, 9999999, 0)
-            myRoot.CFrame = myRoot.CFrame * CFrame.Angles(0, math.rad(9999 * dt), 0)
-        end)
-        
-        task.wait(1.5)
-        isFlinging = false
-        if spinConn then spinConn:Disconnect() end
-        local hum = myChar:FindFirstChildOfClass("Humanoid")
-        if hum then hum.Health = 0 end
-    end)
-end
-
+-- ===== БЕЛЫЙ СПИСОК И ПРОДВИНУТЫЙ ФЛИНГ =====
 label("— БЕЛЫЙ СПИСОК (НЕ ЦЕЛИТЬСЯ) —", 30)
 local whiteHolder = row(0)
 whiteHolder.ClipsDescendants = true
@@ -955,7 +1271,174 @@ button("Обновить белый список", function() refreshWhiteUI() e
 connect(Players.PlayerAdded, function() task.wait(1); refreshWhiteUI() end)
 connect(Players.PlayerRemoving, function(other) whiteList[other.UserId] = nil; task.wait(0.5); refreshWhiteUI() end)
 task.spawn(function() task.wait(1); refreshWhiteUI() end)
--- ===== УМНАЯ СИСТЕМА НАЖАТИЯ НА ИГРОКА (СКВОЗЬ СТЕНЫ) =====
+
+local isFlinging = false
+local function doFling(targetPlayer)
+    if not targetPlayer or not targetPlayer.Character then return end
+    if isFlinging then return end
+    isFlinging = true
+    
+    local myChar = player.Character
+    local myHum = myChar and myChar:FindFirstChildOfClass("Humanoid")
+    local myRoot = myHum and myHum.RootPart
+    
+    local targetChar = targetPlayer.Character
+    local targetHum = targetChar and targetChar:FindFirstChildOfClass("Humanoid")
+    local targetRoot = targetHum and targetHum.RootPart
+    
+    if not myRoot or not targetRoot then 
+        isFlinging = false 
+        return 
+    end
+    
+    local oldPos = myRoot.CFrame
+    local cam = Workspace.CurrentCamera
+    
+    task.spawn(function()
+        if targetChar:FindFirstChild("Head") then
+            cam.CameraSubject = targetChar.Head
+        else
+            cam.CameraSubject = targetHum
+        end
+        
+        local startTime = tick()
+        local angle = 0
+        
+        repeat
+            if not isFlinging or not myRoot or not myRoot.Parent or not targetRoot or not targetRoot.Parent then break end
+            
+            angle = angle + 100
+            myChar:PivotTo(CFrame.new(targetRoot.Position) * CFrame.new(0, 1.5, 0) * CFrame.Angles(math.rad(angle), 0, 0))
+            myRoot.Velocity = Vector3.new(9e7, 9e8, 9e7)
+            myRoot.RotVelocity = Vector3.new(9e8, 9e8, 9e8)
+            RunService.Heartbeat:Wait()
+            
+            myChar:PivotTo(CFrame.new(targetRoot.Position) * CFrame.new(0, -1.5, 0) * CFrame.Angles(math.rad(angle), 0, 0))
+            myRoot.Velocity = Vector3.new(9e7, 9e8, 9e7)
+            myRoot.RotVelocity = Vector3.new(9e8, 9e8, 9e8)
+            RunService.Heartbeat:Wait()
+        until tick() - startTime > 2 or not isFlinging
+        
+        if myHum then cam.CameraSubject = myHum end
+        
+        if myRoot and myRoot.Parent and myHum and myHum.Health > 0 then
+            for i = 1, 5 do
+                myChar:PivotTo(oldPos)
+                myRoot.Velocity = Vector3.zero
+                myRoot.RotVelocity = Vector3.zero
+                task.wait(0.1)
+            end
+        end
+        
+        isFlinging = false
+    end)
+end
+-- ===== HITBOX EXPANDER, WALLBANG И УМНОЕ НАЖАТИЕ =====
+
+-- 1. Hitbox Expander (С сохранением Transparency и CanCollide)
+local function updateHitboxes()
+    if hitboxEnabled then
+        for _, other in ipairs(Players:GetPlayers()) do
+            if other ~= player and not whiteList[other.UserId] and other.Character then
+                local root = other.Character:FindFirstChild("HumanoidRootPart")
+                if root then
+                    if not originalHitboxes[other] then
+                        -- Сохраняем ВСЕ параметры
+                        originalHitboxes[other] = {
+                            Size = root.Size,
+                            Transparency = root.Transparency,
+                            CanCollide = root.CanCollide
+                        }
+                    end
+                    root.Size = Vector3.new(hitboxSize, hitboxSize, hitboxSize)
+                    root.Transparency = 0.7
+                    root.CanCollide = false
+                end
+            end
+        end
+    else
+        for other, origData in pairs(originalHitboxes) do
+            if other.Character then
+                local root = other.Character:FindFirstChild("HumanoidRootPart")
+                if root then
+                    -- Возвращаем ВСЕ параметры
+                    root.Size = origData.Size
+                    root.Transparency = origData.Transparency
+                    root.CanCollide = origData.CanCollide
+                end
+            end
+        end
+        originalHitboxes = {}
+    end
+end
+
+connect(RunService.Heartbeat, function()
+    if hitboxEnabled then updateHitboxes() end
+end)
+
+connect(Players.PlayerRemoving, function(other) originalHitboxes[other] = nil end)
+connect(Players.PlayerAdded, function(other)
+    other.CharacterAdded:Connect(function() originalHitboxes[other] = nil end)
+end)
+
+-- 2. Wallbang (С сохранением реального состояния CanCollide)
+local wallbangConnection = nil
+local function setWallbang(enabled)
+    if enabled then
+        if not wallbangConnection then
+            for _, part in ipairs(Workspace:GetDescendants()) do
+                if part:IsA("BasePart") and part.Name ~= "HumanoidRootPart" and part.Name ~= "Head" then
+                    if part.CanCollide then
+                        savedWallCollisions[part] = part.CanCollide -- Сохраняем реальное значение
+                        part.CanCollide = false
+                    end
+                end
+            end
+            wallbangConnection = Workspace.DescendantAdded:Connect(function(part)
+                if part:IsA("BasePart") and part.Name ~= "HumanoidRootPart" and part.Name ~= "Head" then
+                    if part.CanCollide then
+                        savedWallCollisions[part] = part.CanCollide
+                        part.CanCollide = false
+                    end
+                end
+            end)
+        end
+    else
+        if wallbangConnection then
+            wallbangConnection:Disconnect()
+            wallbangConnection = nil
+        end
+        for part, origCollide in pairs(savedWallCollisions) do
+            if part and part.Parent then
+                part.CanCollide = origCollide -- Возвращаем исходное значение
+            end
+        end
+        savedWallCollisions = {}
+    end
+end
+
+-- === КНОПКИ ДЛЯ МЕНЮ (Вставляем в визуальную часть) ===
+label("— ХИТБОКС (СКВОЗЬ СТЕНЫ) —", 30)
+toggle("Hitbox Expander", settings.hitboxEnabled, function(value)
+    hitboxEnabled = value
+    settings.hitboxEnabled = value
+    saveSettings()
+    updateHitboxes() -- Грок сказал добавить вызов при выключении
+end)
+stepper("Размер хитбокса", settings.hitboxSize, 2, 50, 1, 0, function(value) 
+    hitboxSize = value
+    settings.hitboxSize = value
+    saveSettings() 
+end)
+
+toggle("Стрельба сквозь стены (Wallbang)", settings.wallbangEnabled, function(value)
+    wallbangEnabled = value
+    settings.wallbangEnabled = value
+    setWallbang(value) -- Включаем/выключаем функцию
+    saveSettings()
+end)
+
+-- 3. Умная система нажатия на игрока (2D меню)
 local clickMenu = new("Frame", gui, {
     Size = UDim2.fromOffset(160, 160),
     Position = UDim2.new(0.5, -80, 0.5, -80),
@@ -993,14 +1476,13 @@ local closeClickMenu = new("TextButton", clickMenu, {
 corner(closeClickMenu, 4)
 
 local currentClickedPlayer = nil
-local clickRadius = 80 -- Радиус в пикселях (чем больше, тем легче попасть)
+local clickRadius = 80
 
 local function openMenuForPlayer(plr)
     if plr == player then return end
     currentClickedPlayer = plr
     targetNameLabel.Text = plr.DisplayName
     clickMenu.Visible = true
-    -- Позиционируем меню по центру экрана, чтобы было удобно нажимать
     clickMenu.Position = UDim2.new(0.5, -80, 0.5, -80) 
 end
 
@@ -1042,7 +1524,6 @@ connect(tpClickBtn.Activated, function()
     clickMenu.Visible = false
 end)
 
--- Функция поиска ближайшего игрока к точке тапа (сквозь стены)
 local function getClickedPlayer(inputPos)
     local closestPlayer = nil
     local minDistance = clickRadius
@@ -1051,7 +1532,6 @@ local function getClickedPlayer(inputPos)
 
     for _, other in ipairs(Players:GetPlayers()) do
         if other ~= player and other.Character then
-            -- Проверяем все базовые части (голова, торс, руки, ноги)
             for _, part in ipairs(other.Character:GetChildren()) do
                 if part:IsA("BasePart") then
                     local screenPos, onScreen = cam:WorldToViewportPoint(part.Position)
@@ -1069,16 +1549,13 @@ local function getClickedPlayer(inputPos)
     return closestPlayer
 end
 
--- Отслеживаем клик/тап
 connect(UIS.InputBegan, function(input, gameProcessed)
-    if gameProcessed then return end -- Если нажали на интерфейс (кнопку), игнорируем
-    
+    if gameProcessed then return end
     if input.UserInputType == Enum.UserInputType.Touch or input.UserInputType == Enum.UserInputType.MouseButton1 then
         local clicked = getClickedPlayer(input.Position)
         if clicked then
             openMenuForPlayer(clicked)
         else
-            -- Если тапнули в пустоту, закрываем меню
             if clickMenu.Visible then
                 clickMenu.Visible = false
                 currentClickedPlayer = nil
@@ -1223,11 +1700,11 @@ do
         flyEnabled, noclipEnabled = false, false
         stopFlight(); restoreCollisions()
     end)
-
     label("— ТЕМА МЕНЮ —", 30)
     local themeStatus = label("Тема: голубая", 30)
     local basePrimary, baseSecondary = cyan, violet
     local themeObjects = setmetatable({}, {__mode = "k"})
+    
     local function rememberTheme(object)
         if themeObjects[object] then return end
         local properties = {}
@@ -1243,6 +1720,7 @@ do
         elseif object:IsA("ViewportFrame") then remember("LightColor") end
         if next(properties) then themeObjects[object] = properties end
     end
+    
     local function applyTheme(name, primary, secondary)
         for _, object in ipairs(gui:GetDescendants()) do rememberTheme(object) end
         local oldPrimary, oldSecondary = cyan, violet
@@ -1260,6 +1738,7 @@ do
         end
         themeStatus.Text = "Тема: " .. name
     end
+    
     button("Голубая тема", function() applyTheme("голубая", Color3.fromRGB(63, 215, 255), Color3.fromRGB(149, 104, 255)) end)
     button("Неоново-зелёная тема", function() applyTheme("неоново-зелёная", Color3.fromRGB(80, 255, 110), Color3.fromRGB(30, 180, 120)) end)
     button("Фиолетовая тема", function() applyTheme("фиолетовая", Color3.fromRGB(195, 130, 255), Color3.fromRGB(255, 100, 190)) end)
