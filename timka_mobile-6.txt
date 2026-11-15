@@ -2275,6 +2275,7 @@ end
 
 
     -- ===== ЧАСТЬ 10: НЕОНОВОЕ МИНИ-МЕНЮ ИГРОКА =====
+do
     -- Одна система выбора: таблицы из частей 1, 6 и 7.
     local currentClickedPlayer = nil
     local clickRadius = 25
@@ -2541,6 +2542,7 @@ end
         table.clear(tapBegins)
         popupGeneration = popupGeneration + 1
     end)
+    end
 
 
     -- ===== ЧАСТЬ 11: ВИЗУАЛЫ+ / ОСВЕЩЕНИЕ =====
