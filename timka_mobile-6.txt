@@ -692,6 +692,8 @@ local ok, err = xpcall(function()
 
 
     -- ===== ЧАСТЬ 4: HOME / SPAWN / CHARACTER =====
+local status
+do
 
     -- Статус и быстрые переходы.
     local homeCard, homeInside = uiCard(
@@ -706,7 +708,7 @@ local ok, err = xpcall(function()
     local homeStatus = uiStatus(
         homeInside, "Система готова к настройке", 61
     )
-    local function status(message)
+status = function(message)
         if not active then return end
         if homeStatus and homeStatus.Parent then
             homeStatus.Text = tostring(message)
@@ -983,7 +985,7 @@ local ok, err = xpcall(function()
     task.defer(function()
         if active then applyStats(); applySize() end
     end)
-
+end
 
     -- ===== ЧАСТЬ 5: ESP SYSTEM =====
 do
