@@ -1248,8 +1248,9 @@ end
     -- ===== ЧАСТЬ 6: AIMBOT / TARGET SELECTION =====
     -- СП > обычный приоритет > остальные игроки.
     -- Raycast ESP и аимбота намеренно разделены.
+local priorityTargets = {}
+do
     local priorityEnabled = true
-    local priorityTargets = {}
     local aimSightParams = RaycastParams.new()
     aimSightParams.FilterType = Enum.RaycastFilterType.Exclude
     aimSightParams.IgnoreWater = true
