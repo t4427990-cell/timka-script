@@ -1738,6 +1738,7 @@ local ok, err = xpcall(function()
 
 
     -- ===== ЧАСТЬ 8: ЗАЩИТА / HITBOX / СТЕНЫ / КАМЕРА =====
+do
     -- Все изменённые свойства восстанавливаем при выключении.
     local spinHumanoid, savedAutoRotate = nil, nil
     local function stopSpin()
@@ -1989,6 +1990,7 @@ local ok, err = xpcall(function()
     end)
     if wallbangEnabled then setWallbang(true) end
     if hitboxEnabled then updateHitboxes() end
+end
 
 
     -- ===== ЧАСТЬ 9: ПОЛЁТ И NOCLIP =====
