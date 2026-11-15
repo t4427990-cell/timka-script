@@ -986,6 +986,7 @@ local ok, err = xpcall(function()
 
 
     -- ===== ЧАСТЬ 5: ESP SYSTEM =====
+do
 
     local gazeThreshold = math.cos(math.rad(25))
     local espTimer = 0
@@ -1241,6 +1242,7 @@ local ok, err = xpcall(function()
 
     uiLabel(espInside,
         "Красный — смотрит на тебя, синий — нет", 232, 18)
+end
 
 
     -- ===== ЧАСТЬ 6: AIMBOT / TARGET SELECTION =====
